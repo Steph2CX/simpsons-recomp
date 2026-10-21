@@ -29,16 +29,22 @@ version française (PAL) ; le code est identique en NTSC-U et en PAL italien/esp
 | Windows 10/11 x64 | compilé depuis le Mac ou Linux, peu testé | `windows/creer_dossier_windows.sh` |
 | Linux x64 | jouable | `linux/construire.sh` (sur le PC Linux) |
 
-Toutes les machines ne tiennent pas 60 images/s en 5K : le jeu choisit sa résolution interne selon le nombre de
-cœurs graphiques de la puce.
+Toutes les machines ne tiennent pas 60 images/s en 5K : le jeu choisit sa résolution interne selon la puce
+graphique.
 
-| Mac | Résolution par défaut |
+| Machine | Résolution par défaut |
 |---|---|
-| puce Max ou Ultra (30 cœurs graphiques ou plus) | 5K (5120×2880), 60 images/s testé sur M2 Max |
-| puce Pro (14 à 29 cœurs) | 4K (3840×2160) |
-| puce de base, MacBook Air (moins de 14 cœurs) | 1440p (2560×1440), pas encore mesuré : 60 images/s peut ne pas tenir dans les passages chargés |
+| Mac à puce Max ou Ultra (30 cœurs graphiques ou plus) | 5K (5120×2880), 60 images/s testé sur M2 Max |
+| Mac à puce Pro (14 à 29 cœurs) | 4K (3840×2160) |
+| Mac à puce de base, MacBook Air (moins de 14 cœurs) | 1440p (2560×1440), pas encore mesuré : 60 images/s peut ne pas tenir dans les passages chargés |
+| PC avec carte graphique dédiée de 12 Go ou plus | 5K |
+| PC avec carte graphique dédiée de 8 à 11 Go | 4K |
+| PC avec carte graphique dédiée de moins de 8 Go | 1440p |
+| PC sans carte dédiée (puce Intel ou AMD intégrée) | 1440p sur Windows, 720p sur Linux |
+| Apple TV | 720p |
 
-Sur Windows le jeu démarre en 1440p, sur Linux en 720p et sur l'Apple TV en 720p. `SIMPSONS_RESOLUTION` (voir
+Les seuils des cartes dédiées n'ont pas encore été vérifiés sur un vrai PC. Le choix est écrit dans `jeu.log`
+(« puce graphique : … resolution xN »). `SIMPSONS_RESOLUTION` (voir
 [Réglages](#réglages-variables-denvironnement)) force une autre résolution ; si le jeu saccade, baisser d'un cran.
 
 ## Jouer

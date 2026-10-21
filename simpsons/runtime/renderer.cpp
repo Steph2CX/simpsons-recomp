@@ -61,25 +61,9 @@ namespace
     constexpr uint32_t SURFACE_SIZE = 2048; // host EDRAM surfaces: SURFACE_SIZE x SURFACE_SIZE samples (x the resolution scale)
 
     // Internal resolution: every surface and copy is g_resolutionScale times larger than on the console (the game
-    // still sees 1280x720). SIMPSONS_RESOLUTION=1 (720p), 2 (1440p), 3 (2160p = 4K), 4 (2880p = 5K). Default: 5K on Max/Ultra
-    // chips (M2 Max x4, 80 Bites combat: 58.5 images/s, min 53), 4K on Pro chips, 1440p on base chips (MacBook Air: fewer GPU cores, no fan, often 8 GB shared memory) and on Windows, 720p on Linux
-    // (ThinkPad L13, Iris Xe: 57 images/s in 80 Bites at x1, 29 at x2)
-    const uint32_t g_resolutionScale = [] {
-        const char* value = getenv("SIMPSONS_RESOLUTION");
-#ifdef _WIN32
-        int cores = 0, defaultScale = 2;
-#elif defined(SIMPSONS_TVOS)
-        // Apple TV 4K (A15, 5 GPU cores, ~2 GB for the application)
-        int cores = 0, defaultScale = 1;
-#elif !defined(__APPLE__)
-        int cores = 0, defaultScale = 1;
-#else
-        int cores = PlatformGpuCoreCount(), defaultScale = cores >= 30 ? 4 : cores == 0 || cores >= 14 ? 3 : 2;
-#endif
-        int scale = value && *value ? atoi(value) : defaultScale;
-        fprintf(stderr, "[rendu] puce graphique : %d coeurs, resolution x%d\n", cores, std::clamp(scale, 1, 4));
-        return uint32_t(std::clamp(scale, 1, 4));
-    }();
+    // still sees 1280x720). SIMPSONS_RESOLUTION=1 (720p), 2 (1440p), 3 (2160p = 4K), 4 (2880p = 5K). Default chosen in
+    // CreateDevice by ChooseResolutionScale.
+    uint32_t g_resolutionScale = 1;
     constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D32_SFLOAT_S8_UINT;
     // Halved where memory is short (Apple TV: about 2 GB for the application, graphics included)
     const VkDeviceSize UPLOAD_SIZE = (RuntimeLowMemory() ? 256ull : 512ull) * 1024 * 1024;
@@ -421,6 +405,51 @@ namespace
         return true;
     }
 
+    // Mac: 5K on Max/Ultra chips (M2 Max x4, 80 Bites combat: 58.5 images/s, min 53), 4K on Pro chips, 1440p on base
+    // chips (MacBook Air: fewer GPU cores, no fan, often 8 GB shared memory). PC with a dedicated card: 5K from 12 GB
+    // of video memory, 4K from 8 GB, 1440p below (thresholds not yet measured on a real card). PC without one: 1440p on
+    // Windows, 720p on Linux (ThinkPad L13, Iris Xe: 57 images/s in 80 Bites at x1, 29 at x2). Apple TV: 720p.
+    uint32_t ChooseResolutionScale(const VkPhysicalDeviceProperties& properties)
+    {
+        const char* value = getenv("SIMPSONS_RESOLUTION");
+#if defined(SIMPSONS_TVOS)
+        // Apple TV 4K (A15, 5 GPU cores, ~2 GB for the application)
+        (void)properties;
+        int defaultScale = 1;
+        char detail[64] = "Apple TV";
+#elif defined(__APPLE__)
+        (void)properties;
+        int cores = PlatformGpuCoreCount(), defaultScale = cores >= 30 ? 4 : cores == 0 || cores >= 14 ? 3 : 2;
+        char detail[64];
+        snprintf(detail, sizeof(detail), "%d coeurs", cores);
+#else
+        VkDeviceSize videoMemory = 0;
+        if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+        {
+            VkPhysicalDeviceMemoryProperties memory;
+            vkGetPhysicalDeviceMemoryProperties(g_physicalDevice, &memory);
+            for (uint32_t i = 0; i < memory.memoryHeapCount; i++)
+                if (memory.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)
+                    videoMemory = std::max(videoMemory, memory.memoryHeaps[i].size);
+        }
+        uint32_t videoGigabytes = uint32_t((videoMemory + (512ull << 20)) >> 30); // 11.9 GB reported for a 12 GB card
+#ifdef _WIN32
+        int integratedScale = 2;
+#else
+        int integratedScale = 1;
+#endif
+        int defaultScale = videoMemory == 0 ? integratedScale : videoGigabytes >= 12 ? 4 : videoGigabytes >= 8 ? 3 : 2;
+        char detail[64];
+        if (videoMemory == 0)
+            snprintf(detail, sizeof(detail), "puce integree");
+        else
+            snprintf(detail, sizeof(detail), "carte dediee, %u Go", videoGigabytes);
+#endif
+        int scale = std::clamp(value && *value ? atoi(value) : defaultScale, 1, 4);
+        fprintf(stderr, "[rendu] puce graphique : %s, resolution x%d\n", detail, scale);
+        return uint32_t(scale);
+    }
+
     bool CreateDevice()
     {
         uint32_t count = 0;
@@ -429,12 +458,24 @@ namespace
             return false;
         std::vector<VkPhysicalDevice> devices(count);
         vkEnumeratePhysicalDevices(g_instance, &count, devices.data());
+        // A PC with integrated and dedicated graphics lists both: take the dedicated card
         g_physicalDevice = devices[0];
+        for (VkPhysicalDevice device : devices)
+        {
+            VkPhysicalDeviceProperties candidate;
+            vkGetPhysicalDeviceProperties(device, &candidate);
+            if (candidate.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+            {
+                g_physicalDevice = device;
+                break;
+            }
+        }
 
         VkPhysicalDeviceProperties properties;
         vkGetPhysicalDeviceProperties(g_physicalDevice, &properties);
         fprintf(stderr, "[rendu] GPU : %s (Vulkan %u.%u)\n", properties.deviceName,
             VK_API_VERSION_MAJOR(properties.apiVersion), VK_API_VERSION_MINOR(properties.apiVersion));
+        g_resolutionScale = ChooseResolutionScale(properties);
 
         uint32_t familyCount = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(g_physicalDevice, &familyCount, nullptr);
