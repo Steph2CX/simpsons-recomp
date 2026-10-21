@@ -24,10 +24,22 @@ version française (PAL) ; le code est identique en NTSC-U et en PAL italien/esp
 
 | Plateforme | État | Construction |
 |---|---|---|
-| Mac à puce Apple (macOS 15+) | jouable, 60 images/s jusqu'en 5K | `portable/construire_dependances_mac.sh` puis `tools/creer_application.sh` |
+| Mac à puce Apple (macOS 15+) | jouable, 60 images/s, de 1440p à 5K selon la puce (voir ci-dessous) | `portable/construire_dependances_mac.sh` puis `tools/creer_application.sh` |
 | Apple TV 4K (tvOS 17+, testé sur la 3e génération) | jouable en 720p, 60 images/s | `tvos/construire_dependances_tvos.sh` puis `tvos/creer_application_tvos.sh` |
 | Windows 10/11 x64 | compilé depuis le Mac ou Linux, peu testé | `windows/creer_dossier_windows.sh` |
 | Linux x64 | jouable | `linux/construire.sh` (sur le PC Linux) |
+
+Toutes les machines ne tiennent pas 60 images/s en 5K : le jeu choisit sa résolution interne selon le nombre de
+cœurs graphiques de la puce.
+
+| Mac | Résolution par défaut |
+|---|---|
+| puce Max ou Ultra (30 cœurs graphiques ou plus) | 5K (5120×2880), 60 images/s testé sur M2 Max |
+| puce Pro (14 à 29 cœurs) | 4K (3840×2160) |
+| puce de base, MacBook Air (moins de 14 cœurs) | 1440p (2560×1440) |
+
+Sur Windows le jeu démarre en 1440p, sur Linux en 720p et sur l'Apple TV en 720p. `SIMPSONS_RESOLUTION` (voir
+[Réglages](#réglages-variables-denvironnement)) force une autre résolution ; si le jeu saccade, baisser d'un cran.
 
 ## Jouer
 
@@ -58,7 +70,7 @@ version française (PAL) ; le code est identique en NTSC-U et en PAL italien/esp
   éteindre la console Xbox 360 » devient « Ne pas quitter le jeu », « sur votre console Xbox 360 » devient « sur
   votre ordinateur »…), et l'écran de démarrage annonce « 5K ULTRA HD » au lieu de « COMPATIBLE HD »
   (`simpsons/modifications/textes_fr.tsv`, appliqué par `tools/modifier_textes.py`).
-- **60 images/s** au lieu de 30, et résolution interne jusqu'en 5K.
+- **60 images/s** au lieu de 30, et résolution interne jusqu'en 5K sur les Mac les plus puissants.
 
 <p align="center">
   <img src="captures/logo-ea-5k.jpg" width="80%" alt="Logo « EA | 5K ULTRA HD » de l'écran de démarrage">
