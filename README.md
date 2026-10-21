@@ -54,7 +54,9 @@ version française (PAL) ; le code est identique en NTSC-U et en PAL italien/esp
   bords crénelés. Le runtime leur fabrique des versions réduites (mipmaps) : logo du titre et police des textes
   nettement plus lisses. La liste est dans `simpsons/modifications/textures/*.mips`.
 - **Logo « EA | 5K ULTRA HD »** à la place de « EA | HD » sur l'écran de démarrage (`tools/logo_4k.py`).
-- **Textes adaptés** : « Ne pas éteindre la console Xbox 360 » devient « Ne pas quitter le jeu »
+- **Textes adaptés à l'ordinateur** : les mentions de la console Xbox 360 et du Xbox LIVE disparaissent (« Ne pas
+  éteindre la console Xbox 360 » devient « Ne pas quitter le jeu », « sur votre console Xbox 360 » devient « sur
+  votre ordinateur »…), et l'écran de démarrage annonce « 5K ULTRA HD » au lieu de « COMPATIBLE HD »
   (`simpsons/modifications/textes_fr.tsv`, appliqué par `tools/modifier_textes.py`).
 - **60 images/s** au lieu de 30, et résolution interne jusqu'en 5K.
 
