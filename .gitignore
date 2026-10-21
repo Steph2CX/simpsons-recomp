@@ -1,9 +1,10 @@
 # Liste d'autorisation : tout est exclu sauf ce qui est explicitement repris ci-dessous.
 # Jamais dans le depot : l'ISO, les donnees du jeu, le code genere a partir du jeu (simpsons/ppc*), les shaders
-# traduits, les captures, les compilations, les reglages personnels (tvos/config.local).
+# traduits, les captures de test (sauf celles du README, dans captures/), les compilations, les reglages personnels (tvos/config.local).
 /*
 !/.gitignore
 !/README.md
+!/captures/
 !/correctifs/
 
 !/simpsons/

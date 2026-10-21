@@ -9,6 +9,16 @@ processeur graphique Xenos (rendu Vulkan, traduction des shaders pendant la part
 **Ce dépôt ne contient aucune donnée du jeu.** Il faut sa propre copie du disque Xbox 360. La version testée est la
 version française (PAL) ; le code est identique en NTSC-U et en PAL italien/espagnol.
 
+<p align="center">
+  <img src="captures/chocolat.jpg" width="49%" alt="Homer au Pays du Chocolat">
+  <img src="captures/springfield.jpg" width="49%" alt="La famille devant le SequelStop à Springfield">
+  <img src="captures/dauphins.jpg" width="49%" alt="Combat contre les dauphins sur les quais">
+  <img src="captures/neverquest.jpg" width="49%" alt="Homer et Marge en elfes dans NeverQuest">
+  <img src="captures/medal-of-homer.jpg" width="49%" alt="La famille en soldats dans Medal of Homer">
+  <img src="captures/kang.jpg" width="49%" alt="Kang et Cletus dans Springfield Stood Still">
+</p>
+<p align="center"><em>Captures sur Mac en résolution 4K interne (réduites ici en 1920×1080).</em></p>
+
 ## Plateformes
 
 | Plateforme | État | Construction |
