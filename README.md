@@ -60,6 +60,11 @@ version française (PAL) ; le code est identique en NTSC-U et en PAL italien/esp
   (`simpsons/modifications/textes_fr.tsv`, appliqué par `tools/modifier_textes.py`).
 - **60 images/s** au lieu de 30, et résolution interne jusqu'en 5K.
 
+<p align="center">
+  <img src="captures/logo-ea-5k.jpg" width="80%" alt="Logo « EA | 5K ULTRA HD » de l'écran de démarrage">
+</p>
+<p align="center"><em>Le logo de démarrage refait, en pleine définition (détail d'une capture 4K).</em></p>
+
 ## Préparer le projet
 
 Outils (Mac) : Xcode, `brew install cmake ninja python autoconf automake libtool pkg-config molten-vk xcodegen`.
