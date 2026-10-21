@@ -1,0 +1,25 @@
+LES SIMPSON - LE JEU (version Windows)
+=====================================
+
+INSTALLER
+- Copier tout ce dossier sur le PC, par exemple dans "Documents" ou sur le Bureau.
+  (Pas dans "Program Files" : le jeu ne pourrait pas y fonctionner correctement.)
+- Ne rien retirer du dossier : le programme a besoin des dossiers "game" et "modifications"
+  et des fichiers dxcompiler.dll et dxil.dll a cote de lui.
+
+LANCER
+- Double-cliquer sur "Les Simpson - Le Jeu.exe".
+- La premiere fois, Windows peut afficher "Windows a protege votre ordinateur" :
+  cliquer sur "Informations complementaires", puis sur "Executer quand meme".
+- Le jeu demarre en plein ecran. Alt+Entree ou F11 : plein ecran / fenetre.
+
+MANETTE
+- Une manette Xbox (filaire ou Bluetooth) fonctionne directement.
+- Clavier : fleches ou ZQSD pour se deplacer, Entree = START, Espace = A, E = B, R = X, F = Y.
+
+EN CAS DE PROBLEME
+- Mettre a jour Windows et le pilote graphique (Windows Update).
+- Le jeu ecrit un journal ici (a copier dans la barre d'adresse de l'Explorateur) :
+      %LOCALAPPDATA%\Les Simpson - Le Jeu
+  Envoyer le fichier "jeu.log" de ce dossier, avec une photo de l'ecran si possible.
+- Les sauvegardes sont dans ce meme dossier (sous-dossier "donnees").

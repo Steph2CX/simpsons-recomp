@@ -1,0 +1,20 @@
+name: Simpsons
+options:
+  bundleIdPrefix: com.example
+settings:
+  DEVELOPMENT_TEAM: ${EQUIPE}
+  CODE_SIGN_STYLE: Automatic
+targets:
+  Simpsons:
+    type: application
+    platform: tvOS
+    deploymentTarget: "17.0"
+    sources: [main.m]
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Les Simpson
+    entitlements:
+      path: Simpsons.entitlements
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: ${IDENTIFIANT}

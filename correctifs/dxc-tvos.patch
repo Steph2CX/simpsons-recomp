@@ -1,0 +1,168 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 7b754049..3f1f9b17 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -23,7 +23,7 @@ if (POLICY CMP0051)
+   # stripped everywhere that access the SOURCES property, so we just
+   # defer to the OLD behavior of not including generator expressions
+   # in the output for now.
+-  cmake_policy(SET CMP0051 OLD)
++  # cmake_policy(SET CMP0051 OLD) : refuse par CMake 4 (portage tvOS)
+ endif()
+ 
+ if(CMAKE_VERSION VERSION_LESS 3.1.20141117)
+diff --git a/cmake/modules/AddLLVM.cmake b/cmake/modules/AddLLVM.cmake
+index f25de66a..45ee91fb 100644
+--- a/cmake/modules/AddLLVM.cmake
++++ b/cmake/modules/AddLLVM.cmake
+@@ -75,7 +75,7 @@ function(llvm_update_compile_flags name)
+ endfunction()
+ 
+ function(add_llvm_symbol_exports target_name export_file)
+-  if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
++  if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin|tvOS")
+     set(native_export_file "${target_name}.exports")
+     add_custom_command(OUTPUT ${native_export_file}
+       COMMAND sed -e "s/^/_/" < ${export_file} > ${native_export_file}
+@@ -171,7 +171,7 @@ function(add_link_opts target_name)
+ 
+     # Pass -O3 to the linker. This enabled different optimizations on different
+     # linkers.
+-    if(NOT (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|SunOS" OR WIN32))
++    if(NOT (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|tvOS|SunOS" OR WIN32))
+       set_property(TARGET ${target_name} APPEND_STRING PROPERTY
+                    LINK_FLAGS " -Wl,-O3")
+     endif()
+@@ -185,7 +185,7 @@ function(add_link_opts target_name)
+     endif()
+ 
+     if(NOT LLVM_NO_DEAD_STRIP)
+-      if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
++      if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin|tvOS")
+         # ld64's implementation of -dead_strip breaks tools that use plugins.
+         set_property(TARGET ${target_name} APPEND_STRING PROPERTY
+                      LINK_FLAGS " -Wl,-dead_strip")
+diff --git a/cmake/modules/HCT.cmake b/cmake/modules/HCT.cmake
+index b7bc8a3f..37934ced 100644
+--- a/cmake/modules/HCT.cmake
++++ b/cmake/modules/HCT.cmake
+@@ -92,7 +92,7 @@ function(add_hlsl_hctgen mode)
+   # file, and define the verification command
+   if(NOT copy_sources)
+     set(output ${temp_output})
+-    if (CLANG_FORMAT_EXE) # Only verify sources if clang-format is available.
++    if (CLANG_FORMAT_EXE AND NOT HLSL_SKIP_GENERATED_CHECK) # Only verify sources if clang-format is available (portage tvOS : HLSL_SKIP_GENERATED_CHECK, autre version de clang-format)
+       set(verification COMMAND ${CMAKE_COMMAND} -E compare_files ${temp_output} ${full_output})
+     endif()
+   endif()
+diff --git a/cmake/modules/HandleLLVMOptions.cmake b/cmake/modules/HandleLLVMOptions.cmake
+index 7b8edecd..ab85c9c9 100644
+--- a/cmake/modules/HandleLLVMOptions.cmake
++++ b/cmake/modules/HandleLLVMOptions.cmake
+@@ -138,7 +138,7 @@ endif()
+ 
+ # Pass -Wl,-z,defs. This makes sure all symbols are defined. Otherwise a DSO
+ # build might work on ELF but fail on MachO/COFF.
+-if(NOT (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR WIN32 OR CYGWIN OR
++if(NOT (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|tvOS" OR WIN32 OR CYGWIN OR
+         ${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD") AND
+    NOT LLVM_USE_SANITIZER)
+   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,defs")
+@@ -587,7 +587,7 @@ endif()
+ # But MinSizeRel seems to add that automatically, so maybe disable these
+ # flags instead if LLVM_NO_DEAD_STRIP is set.
+ if(NOT CYGWIN AND NOT WIN32)
+-  if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND
++  if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|tvOS" AND
+      NOT uppercase_CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+     check_c_compiler_flag("-Werror -fno-function-sections" C_SUPPORTS_FNO_FUNCTION_SECTIONS)
+     if (C_SUPPORTS_FNO_FUNCTION_SECTIONS)
+diff --git a/include/llvm/ADT/StringRef.h b/include/llvm/ADT/StringRef.h
+index 957707f4..64baca21 100644
+--- a/include/llvm/ADT/StringRef.h
++++ b/include/llvm/ADT/StringRef.h
+@@ -573,6 +573,7 @@ namespace llvm {
+ // StringRef provides an operator string; that trips up the std::pair noexcept specification,
+ // which (a) enables the moves constructor (because conversion is allowed), but (b)
+ // misclassifies the the construction as nothrow.
++#if defined(_MSC_VER) // refuse par libc++ recent (portage tvOS)
+ namespace std {
+   template<>
+   struct is_nothrow_constructible <std::string, llvm::StringRef>
+@@ -587,6 +588,7 @@ namespace std {
+     : std::false_type {
+   };
+ }
++#endif
+ // HLSL Change Ends
+ 
+ #endif
+diff --git a/lib/Support/Unix/Process.inc b/lib/Support/Unix/Process.inc
+index 87987dce..b19ccd89 100644
+--- a/lib/Support/Unix/Process.inc
++++ b/lib/Support/Unix/Process.inc
+@@ -12,6 +12,9 @@
+ //===----------------------------------------------------------------------===//
+ 
+ #include "Unix.h"
++#if defined(__APPLE__)
++#include <TargetConditionals.h> // portage tvOS
++#endif
+ #include "llvm/ADT/Hashing.h"
+ #include "llvm/ADT/StringRef.h"
+ #include "llvm/Support/ManagedStatic.h"
+@@ -145,7 +148,7 @@ void Process::PreventCoreFiles() {
+   setrlimit(RLIMIT_CORE, &rlim);
+ #endif
+ 
+-#if defined(HAVE_MACH_MACH_H) && !defined(__GNU__)
++#if defined(HAVE_MACH_MACH_H) && !defined(__GNU__) && !(defined(__APPLE__) && TARGET_OS_TV) // portage tvOS
+   // Disable crash reporting on Mac OS X 10.0-10.4
+ 
+   // get information about the original set of exception ports for the task
+diff --git a/lib/Support/Unix/Program.inc b/lib/Support/Unix/Program.inc
+index 8947b62e..3a575dac 100644
+--- a/lib/Support/Unix/Program.inc
++++ b/lib/Support/Unix/Program.inc
+@@ -256,6 +256,10 @@ static bool Execute(ProcessInfo &PI, StringRef Program, const char **args,
+   }
+ #endif
+ 
++#if defined(__APPLE__) && TARGET_OS_TV // pas de creation de processus sur tvOS (portage tvOS)
++  MakeErrMsg(ErrMsg, "no process creation on tvOS");
++  return false;
++#else
+   // Create a child process.
+   int child = fork();
+   switch (child) {
+@@ -317,6 +321,7 @@ static bool Execute(ProcessInfo &PI, StringRef Program, const char **args,
+   PI.Pid = child;
+ 
+   return true;
++#endif
+ }
+ 
+ namespace llvm {
+diff --git a/lib/Support/Unix/Signals.inc b/lib/Support/Unix/Signals.inc
+index 57479c27..82b36558 100644
+--- a/lib/Support/Unix/Signals.inc
++++ b/lib/Support/Unix/Signals.inc
+@@ -13,6 +13,9 @@
+ //===----------------------------------------------------------------------===//
+ 
+ #include "Unix.h"
++#if defined(__APPLE__)
++#include <TargetConditionals.h> // portage tvOS
++#endif
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/Support/Format.h"
+ #include "llvm/Support/FileSystem.h"
+@@ -473,7 +476,7 @@ void llvm::sys::DisableSystemDialogsOnCrash() {}
+ void llvm::sys::PrintStackTraceOnErrorSignal(bool DisableCrashReporting) {
+   AddSignalHandler(PrintStackTraceSignalHandler, nullptr);
+ 
+-#if defined(__APPLE__) && defined(ENABLE_CRASH_OVERRIDES)
++#if defined(__APPLE__) && defined(ENABLE_CRASH_OVERRIDES) && !TARGET_OS_TV // portage tvOS
+   // Environment variable to disable any kind of crash dialog.
+   if (DisableCrashReporting || getenv("LLVM_DISABLE_CRASH_REPORT")) {
+     mach_port_t self = mach_task_self();

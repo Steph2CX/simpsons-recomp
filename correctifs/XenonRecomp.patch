@@ -1,0 +1,259 @@
+diff --git a/XenonRecomp/recompiler.cpp b/XenonRecomp/recompiler.cpp
+index fa91527..dfcce20 100644
+--- a/XenonRecomp/recompiler.cpp
++++ b/XenonRecomp/recompiler.cpp
+@@ -609,7 +609,8 @@ bool Recompiler::Recompile(
+     case PPC_INST_BCTR:
+         if (switchTable != config.switchTables.end())
+         {
+-            println("\tswitch ({}.u64) {{", r(switchTable->second.r));
++            // Jump table indices are 32-bit: the upper word of the register is not used by the hardware
++            println("\tswitch ({}.u32) {{", r(switchTable->second.r));
+ 
+             for (size_t i = 0; i < switchTable->second.labels.size(); i++)
+             {
+@@ -668,6 +669,14 @@ bool Recompiler::Recompile(
+         println("\tif ({}.u32 != 0 && !{}.eq) goto loc_{:X};", ctr(), cr(insn.operands[0] / 4), insn.operands[1]);
+         break;
+ 
++    case PPC_INST_BDNZT:
++    {
++        static constexpr const char* bits[] = { "lt", "gt", "eq", "so" };
++        println("\t--{}.u64;", ctr());
++        println("\tif ({}.u32 != 0 && {}.{}) goto loc_{:X};", ctr(), cr(insn.operands[0] / 4), bits[insn.operands[0] % 4], insn.operands[1]);
++        break;
++    }
++
+     case PPC_INST_BEQ:
+         printConditionalBranch(false, "eq");
+         break;
+@@ -849,7 +858,9 @@ bool Recompiler::Recompile(
+         break;
+ 
+     case PPC_INST_EIEIO:
+-        // no op
++        // Memory barrier: the Mac's ARM cores reorder stores, so the guest's ordering (command data
++        // before the GPU write pointer, data before a lock release) needs a real fence
++        println("\t__atomic_thread_fence(__ATOMIC_SEQ_CST);");
+         break;
+ 
+     case PPC_INST_EXTSB:
+@@ -1209,7 +1220,9 @@ bool Recompiler::Recompile(
+         break;
+ 
+     case PPC_INST_LWSYNC:
+-        // no op
++        // Memory barrier: the Mac's ARM cores reorder stores, so the guest's ordering (command data
++        // before the GPU write pointer, data before a lock release) needs a real fence
++        println("\t__atomic_thread_fence(__ATOMIC_SEQ_CST);");
+         break;
+ 
+     case PPC_INST_LWZ:
+@@ -1325,6 +1338,10 @@ bool Recompiler::Recompile(
+             println("\t{}.compare<int32_t>({}.s32, 0, {});", cr(0), r(insn.operands[0]), xer());
+         break;
+ 
++    case PPC_INST_EQV:
++        println("\t{}.u64 = ~({}.u64 ^ {}.u64);", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
++        break;
++
+     case PPC_INST_NAND:
+         println("\t{}.u64 = ~({}.u64 & {}.u64);", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
+         break;
+@@ -1547,6 +1564,14 @@ bool Recompiler::Recompile(
+         println("{}.u32, {}.u32);", r(insn.operands[2]), f(insn.operands[0]));
+         break;
+ 
++    case PPC_INST_STFSU:
++        printSetFlushMode(false);
++        println("\t{}.f32 = float({}.f64);", temp(), f(insn.operands[0]));
++        println("\t{} = {} + {}.u32;", ea(), int32_t(insn.operands[1]), r(insn.operands[2]));
++        println("\tPPC_STORE_U32({}, {}.u32);", ea(), temp());
++        println("\t{}.u32 = {};", r(insn.operands[2]), ea());
++        break;
++
+     case PPC_INST_STFS:
+         printSetFlushMode(false);
+         println("\t{}.f32 = float({}.f64);", temp(), f(insn.operands[0]));
+@@ -1711,7 +1736,9 @@ bool Recompiler::Recompile(
+         break;
+ 
+     case PPC_INST_SYNC:
+-        // no op
++        // Memory barrier: the Mac's ARM cores reorder stores, so the guest's ordering (command data
++        // before the GPU write pointer, data before a lock release) needs a real fence
++        println("\t__atomic_thread_fence(__ATOMIC_SEQ_CST);");
+         break;
+ 
+     case PPC_INST_TDLGEI:
+@@ -1760,6 +1787,10 @@ bool Recompiler::Recompile(
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u32, simde_mm_add_epi32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_load_si128((simde__m128i*){}.u32)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+ 
++    case PPC_INST_VADDSWS:
++        println("\tsimde_mm_store_si128((simde__m128i*){}.s32, simde_mm_adds_epi32(simde_mm_load_si128((simde__m128i*){}.s32), simde_mm_load_si128((simde__m128i*){}.s32)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
++        break;
++
+     case PPC_INST_VADDUWS:
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u32, simde_mm_adds_epu32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_load_si128((simde__m128i*){}.u32)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+@@ -1769,6 +1800,7 @@ bool Recompiler::Recompile(
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_and_si128(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+ 
++    case PPC_INST_VANDC:
+     case PPC_INST_VANDC128:
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_andnot_si128(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
+         break;
+@@ -1785,6 +1817,16 @@ bool Recompiler::Recompile(
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_avg_epu8(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+ 
++    case PPC_INST_VCTUXS:
++    case PPC_INST_VCFPUXWS128:
++        printSetFlushMode(true);
++        print("\tsimde_mm_store_si128((simde__m128i*){}.u32, simde_mm_vctuxs(", v(insn.operands[0]));
++        if (insn.operands[2] != 0)
++            println("simde_mm_mul_ps(simde_mm_load_ps({}.f32), simde_mm_set1_ps({}))));", v(insn.operands[1]), 1u << insn.operands[2]);
++        else
++            println("simde_mm_load_ps({}.f32)));", v(insn.operands[1]));
++        break;
++
+     case PPC_INST_VCTSXS:
+     case PPC_INST_VCFPSXWS128:
+         printSetFlushMode(true);
+@@ -1871,6 +1913,10 @@ bool Recompiler::Recompile(
+             println("\t{}.setFromMask(simde_mm_load_ps({}.f32), 0xF);", cr(6), v(insn.operands[0]));
+         break;
+ 
++    case PPC_INST_VCMPGTUW:
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u32, simde_mm_cmpgt_epu32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_load_si128((simde__m128i*){}.u32)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
++        break;
++
+     case PPC_INST_VCMPGTUB:
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_cmpgt_epu8(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+@@ -2042,6 +2088,16 @@ bool Recompiler::Recompile(
+         }
+         break;
+ 
++    case PPC_INST_VPKSWSS:
++    case PPC_INST_VPKSWSS128:
++        println("\tsimde_mm_store_si128((simde__m128i*){}.s16, simde_mm_packs_epi32(simde_mm_load_si128((simde__m128i*){}.s32), simde_mm_load_si128((simde__m128i*){}.s32)));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
++        break;
++
++    case PPC_INST_VPKUWUS:
++    case PPC_INST_VPKUWUS128:
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u16, simde_mm_packus_epu32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_load_si128((simde__m128i*){}.u32)));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
++        break;
++
+     case PPC_INST_VPKSHUS:
+     case PPC_INST_VPKSHUS128:
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_packus_epi16(simde_mm_load_si128((simde__m128i*){}.s16), simde_mm_load_si128((simde__m128i*){}.s16)));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
+@@ -2088,6 +2144,7 @@ bool Recompiler::Recompile(
+         break;
+ 
+     case PPC_INST_VSEL:
++    case PPC_INST_VSEL128:
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_or_si128(simde_mm_andnot_si128(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)), simde_mm_and_si128(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8))));", v(insn.operands[0]), v(insn.operands[3]), v(insn.operands[1]), v(insn.operands[3]), v(insn.operands[2]));
+         break;
+ 
+@@ -2145,6 +2202,14 @@ bool Recompiler::Recompile(
+         break;
+     }
+ 
++    case PPC_INST_VSLO:
++    case PPC_INST_VSLO128:
++        // Vectors are stored byte-reversed, so a big-endian left octet shift moves bytes towards higher indices
++        println("\t{}.u32 = ({}.u8[0] >> 3) & 0xF;", temp(), v(insn.operands[2]));
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_load_si128((simde__m128i*){}.u8));", vTemp(), v(insn.operands[1]));
++        println("\tfor (uint32_t i = 0; i < 16; i++) {}.u8[i] = i >= {}.u32 ? {}.u8[i - {}.u32] : 0;", v(insn.operands[0]), temp(), vTemp(), temp());
++        break;
++
+     case PPC_INST_VSR:
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_vsr(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+diff --git a/XenonUtils/ppc_context.h b/XenonUtils/ppc_context.h
+index 31a86cd..35f2d90 100644
+--- a/XenonUtils/ppc_context.h
++++ b/XenonUtils/ppc_context.h
+@@ -231,7 +231,8 @@ struct PPCFPSCRRegister
+ 
+     inline void setcsr(uint32_t csr) noexcept
+     {
+-        simde_mm_setcsr(csr);
++        // csr starts at 0 in new contexts: keep all x64 exceptions masked (guest never traps, like ARM)
++        simde_mm_setcsr(csr | 0x1F80);
+     }
+ #elif defined(__aarch64__) || defined(_M_ARM64)
+     // RMode
+@@ -672,6 +673,39 @@ inline simde__m128i simde_mm_cmpgt_epu16(simde__m128i a, simde__m128i b)
+     return simde_mm_cmpgt_epi16(simde_mm_xor_si128(a, c), simde_mm_xor_si128(b, c));
+ }
+ 
++inline simde__m128i simde_mm_cmpgt_epu32(simde__m128i a, simde__m128i b)
++{
++    simde__m128i c = simde_mm_set1_epi32(INT_MIN);
++    return simde_mm_cmpgt_epi32(simde_mm_xor_si128(a, c), simde_mm_xor_si128(b, c));
++}
++
++inline simde__m128i simde_mm_adds_epi32(simde__m128i a, simde__m128i b)
++{
++    simde__m128i sum = simde_mm_add_epi32(a, b);
++    // Overflow when both operands share a sign that differs from the sum
++    simde__m128i overflow = simde_mm_andnot_si128(simde_mm_xor_si128(a, b), simde_mm_xor_si128(a, sum));
++    simde__m128i saturated = simde_mm_xor_si128(simde_mm_srai_epi32(a, 31), simde_mm_set1_epi32(INT_MAX));
++    return simde_mm_blendv_epi8(sum, saturated, simde_mm_srai_epi32(overflow, 31));
++}
++
++inline simde__m128i simde_mm_packus_epu32(simde__m128i a, simde__m128i b)
++{
++    simde__m128i c = simde_mm_set1_epi32(0xFFFF);
++    return simde_mm_packus_epi32(simde_mm_min_epu32(a, c), simde_mm_min_epu32(b, c));
++}
++
++inline simde__m128i simde_mm_vctuxs(simde__m128 src1)
++{
++    // NaN and negative values become 0
++    simde__m128 src = simde_mm_max_ps(src1, simde_mm_setzero_ps());
++    simde__m128 bias = simde_mm_set1_ps(2147483648.0f);
++    simde__m128 high = simde_mm_cmpge_ps(src, bias);
++    simde__m128i dest = simde_mm_cvttps_epi32(simde_mm_sub_ps(src, simde_mm_and_ps(high, bias)));
++    dest = simde_mm_add_epi32(dest, simde_mm_and_si128(simde_mm_castps_si128(high), simde_mm_set1_epi32(INT_MIN)));
++    simde__m128 overflow = simde_mm_cmpge_ps(src, simde_mm_set1_ps(4294967296.0f));
++    return simde_mm_or_si128(dest, simde_mm_castps_si128(overflow));
++}
++
+ inline simde__m128i simde_mm_vctsxs(simde__m128 src1)
+ {
+     simde__m128 xmm2 = simde_mm_cmpunord_ps(src1, src1);
+@@ -689,13 +723,26 @@ inline simde__m128i simde_mm_vsr(simde__m128i a, simde__m128i b)
+ }
+ 
+ #if defined(__aarch64__) || defined(_M_ARM64)
++// Guest time base (mftb): the Xbox 360 counts at 49.875 MHz, the ARM generic timer at its own
++// frequency (24 MHz on Apple silicon), so the value is converted. Games pace frames with it.
+ inline uint64_t __rdtsc()
+ {
+-    uint64_t ret;
++    uint64_t ticks, frequency;
+     asm volatile("mrs %0, cntvct_el0\n\t"
+-                 : "=r"(ret)::"memory");
+-    return ret;
++                 : "=r"(ticks)::"memory");
++    asm volatile("mrs %0, cntfrq_el0" : "=r"(frequency));
++    return uint64_t((unsigned __int128)ticks * 49875000u / frequency);
++}
++#elif defined(__x86_64__) || defined(_M_X64)
++// x64 (Windows, Linux): the processor counter (rdtsc) runs at the CPU frequency, the guest time base is derived
++// from the steady clock instead
++#include <chrono>
++inline uint64_t PPCGuestTimeBase()
++{
++    auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
++    return uint64_t((unsigned __int128)ns * 399 / 8000); // 49.875 MHz = 399 / 8 ticks per microsecond
+ }
++#define __rdtsc() PPCGuestTimeBase()
+ #elif !defined(__x86_64__) && !defined(_M_X64)
+ #   error "Missing implementation for __rdtsc()"
+ #endif

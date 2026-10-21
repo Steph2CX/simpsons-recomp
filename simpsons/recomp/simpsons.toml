@@ -1,0 +1,2010 @@
+# The Simpsons Game - Xbox 360 (code identique NTSC-U et PAL it/es)
+[main]
+file_path = "../game/default.xex"
+out_directory_path = "../ppc"
+switch_table_file_path = "simpsons_switch_tables.toml"
+
+skip_lr = false
+skip_msr = false
+ctr_as_local = false
+xer_as_local = false
+reserved_as_local = false
+cr_as_local = false
+non_argument_as_local = false
+non_volatile_as_local = false
+
+# Trouvees par motif d'octets (une seule occurrence chacune)
+restgprlr_14_address = 0x82A3C3E0
+savegprlr_14_address = 0x82A3C390
+restfpr_14_address = 0x82A3C5EC
+savefpr_14_address = 0x82A3C5A0
+restvmx_14_address = 0x82A445A8
+savevmx_14_address = 0x82A44310
+restvmx_64_address = 0x82A4463C
+savevmx_64_address = 0x82A443A4
+
+# longjmp appelle RtlUnwind ; setjmp suit juste apres (meme agencement de jmp_buf)
+longjmp_address = 0x82A43D30
+setjmp_address = 0x82A43E50
+
+invalid_instructions = [
+    { data = 0x00000000, size = 4 }, # Padding
+    { data = 0x00485645, size = 0x43C }, # Fin de .text (donnees apres les thunks d'import)
+]
+
+# Fonctions hors .pdata contenant des switch (tools/fix_switch_funcs.py)
+# et fonctions appelees seulement via des tables virtuelles (tools/find_vtable_funcs.py)
+functions = [
+    { address = 0x827C2D30, size = 0x30 },
+    { address = 0x82C79DC0, size = 0x8 },
+    { address = 0x82C79DC8, size = 0x8 },
+    { address = 0x82242E48, size = 0xE8 }, # switch manuel (table 1)
+    { address = 0x822B0A40, size = 0xF4 },
+    { address = 0x822B0B38, size = 0x154 },
+    { address = 0x82339C78, size = 0x12C },
+    { address = 0x8233CDD0, size = 0x84 },
+    { address = 0x823A0B90, size = 0x78 },
+    { address = 0x823A10F0, size = 0x60 },
+    { address = 0x823A1970, size = 0x84 },
+    { address = 0x823F78C8, size = 0x48 },
+    { address = 0x82401260, size = 0x220 },
+    { address = 0x82441B10, size = 0xEC },
+    { address = 0x82494FD0, size = 0x6A8 },
+    { address = 0x824B3238, size = 0x114 },
+    { address = 0x824B9820, size = 0x100 },
+    { address = 0x82504D98, size = 0x110 },
+    { address = 0x8255A390, size = 0x8C },
+    { address = 0x8255F8C0, size = 0x184 },
+    { address = 0x8255FA48, size = 0xA4 },
+    { address = 0x825F7648, size = 0x78 },
+    { address = 0x8264E6C8, size = 0xBC },
+    { address = 0x8264E788, size = 0xB8 },
+    { address = 0x8264E840, size = 0x80 },
+    { address = 0x8264E8C0, size = 0x7C },
+    { address = 0x8264E968, size = 0x68 },
+    { address = 0x8264E9D0, size = 0x64 },
+    { address = 0x8264EC60, size = 0x58 },
+    { address = 0x8264ECB8, size = 0x5C },
+    { address = 0x8264ED48, size = 0x198 },
+    { address = 0x8264EEE0, size = 0x16C },
+    { address = 0x8264F0B8, size = 0x108 },
+    { address = 0x82651308, size = 0x104 },
+    { address = 0x8266CC08, size = 0x1F8 },
+    { address = 0x826A4F78, size = 0xA0 },
+    { address = 0x826A5450, size = 0x174 },
+    { address = 0x826A55C8, size = 0xDC },
+    { address = 0x826BCFD0, size = 0x354 },
+    { address = 0x826BE0E0, size = 0xD4 },
+    { address = 0x826BE228, size = 0xC0 },
+    { address = 0x826E4BF0, size = 0x1B4 },
+    { address = 0x826EBCB0, size = 0x84 },
+    { address = 0x8270E098, size = 0x1A4 },
+    { address = 0x82718E30, size = 0x50C },
+    { address = 0x82719400, size = 0x9C },
+    { address = 0x8273B5D0, size = 0x94 },
+    { address = 0x8274BBD0, size = 0x180 },
+    { address = 0x8275BD68, size = 0xB0 },
+    { address = 0x827698C0, size = 0x8C },
+    { address = 0x8278EF78, size = 0x730 },
+    { address = 0x8278F6A8, size = 0x5DC },
+    { address = 0x827BA660, size = 0x7C },
+    { address = 0x827C1828, size = 0x70 },
+    { address = 0x827C2C40, size = 0x120 },
+    { address = 0x827E04D8, size = 0x70 },
+    { address = 0x827EF518, size = 0x74 },
+    { address = 0x827F0460, size = 0x80 },
+    { address = 0x8281B180, size = 0x150 },
+    { address = 0x8282E808, size = 0x44 },
+    { address = 0x828304F0, size = 0x128 },
+    { address = 0x828390E8, size = 0xBC },
+    { address = 0x82839B30, size = 0x194 },
+    { address = 0x82847B30, size = 0x7C },
+    { address = 0x82848AC8, size = 0xF4 },
+    { address = 0x82851370, size = 0x468 },
+    { address = 0x82851938, size = 0xA4 },
+    { address = 0x8288B9D8, size = 0x84 },
+    { address = 0x828A2068, size = 0x78 },
+    { address = 0x828A20E0, size = 0x6C },
+    { address = 0x828B78D8, size = 0x84 },
+    { address = 0x828C5F80, size = 0x70 },
+    { address = 0x828FC668, size = 0xF4 },
+    { address = 0x82907A40, size = 0xB0 },
+    { address = 0x8290F2D8, size = 0xEC },
+    { address = 0x82932840, size = 0xD4 },
+    { address = 0x82932980, size = 0xB8 },
+    { address = 0x82937020, size = 0xF8 },
+    { address = 0x82944570, size = 0xD4 },
+    { address = 0x8294A638, size = 0x48 },
+    { address = 0x8294A6C8, size = 0x48 },
+    { address = 0x8296E418, size = 0xB0 },
+    { address = 0x829A0A78, size = 0x88 },
+    { address = 0x829AB008, size = 0xC0 },
+    { address = 0x829AB0C8, size = 0x100 },
+    { address = 0x829ABA50, size = 0x6C },
+    { address = 0x829ABAC0, size = 0x6C },
+    { address = 0x829B2228, size = 0xC4 },
+    { address = 0x829D4260, size = 0x90 },
+    { address = 0x829EB160, size = 0x9C },
+    { address = 0x829F2550, size = 0xB4 },
+    { address = 0x82A281F0, size = 0xF4 },
+    { address = 0x82A282E8, size = 0x7C },
+    { address = 0x82A317D0, size = 0x174 },
+    { address = 0x82AB0AA8, size = 0x154 },
+    { address = 0x82ACE140, size = 0x3F4 },
+    { address = 0x82AD3B98, size = 0x2C8 },
+    { address = 0x82AD6090, size = 0x7C },
+    { address = 0x82AD6110, size = 0xA8 },
+    { address = 0x82B1BFA8, size = 0x214 },
+    { address = 0x82B3C4B8, size = 0x1C4 },
+    { address = 0x82B79AA0, size = 0xAC },
+    { address = 0x82B87F20, size = 0x108 },
+    { address = 0x82B924E8, size = 0x118 },
+    { address = 0x82C52770, size = 0x1A4 },
+    { address = 0x82C52918, size = 0x154 },
+    { address = 0x82C53858, size = 0x1BC },
+    { address = 0x82C76560, size = 0xAC },
+    { address = 0x82C79D48, size = 0x88 },
+    { address = 0x82C8CCB0, size = 0x1F0 },
+    { address = 0x82C98990, size = 0xA4 },
+    { address = 0x82C9D690, size = 0x74 },
+    { address = 0x82C9DAD8, size = 0x54 },
+    { address = 0x82C9DB30, size = 0x104 },
+    { address = 0x824351A0, size = 0x18 }, # cible de branchement non resolue
+    { address = 0x82436CF0, size = 0x4E8 }, # cible de branchement non resolue
+    { address = 0x82436D04, size = 0x4D4 }, # cible de branchement non resolue
+    { address = 0x824383E8, size = 0x30 }, # cible de branchement non resolue
+    { address = 0x82438410, size = 0x8 }, # cible de branchement non resolue
+    { address = 0x824389C4, size = 0x18 }, # cible de branchement non resolue
+    { address = 0x82439128, size = 0x128 }, # cible de branchement non resolue
+    { address = 0x8243920C, size = 0x44 }, # cible de branchement non resolue
+    { address = 0x82439214, size = 0x3C }, # cible de branchement non resolue
+    { address = 0x82439240, size = 0x10 }, # cible de branchement non resolue
+    { address = 0x8243925C, size = 0x18 }, # cible de branchement non resolue
+    { address = 0x8243926C, size = 0x8 }, # cible de branchement non resolue
+    { address = 0x824B1274, size = 0x264 }, # cible de branchement non resolue
+    { address = 0x824B12E4, size = 0x1F4 }, # cible de branchement non resolue
+    { address = 0x824B147C, size = 0x5C }, # cible de branchement non resolue
+    { address = 0x824B1514, size = 0x324 }, # cible de branchement non resolue
+    { address = 0x824B1628, size = 0x210 }, # cible de branchement non resolue
+    { address = 0x8253F48C, size = 0xC }, # cible de branchement non resolue
+    { address = 0x8253F490, size = 0x8 }, # cible de branchement non resolue
+    { address = 0x82541C60, size = 0x34 }, # cible de branchement non resolue
+    { address = 0x82541C98, size = 0x28 }, # cible de branchement non resolue
+    { address = 0x82542610, size = 0x30 }, # cible de branchement non resolue
+    { address = 0x82542644, size = 0x28 }, # cible de branchement non resolue
+    { address = 0x82542664, size = 0x8 }, # cible de branchement non resolue
+    { address = 0x825428C0, size = 0x30 }, # cible de branchement non resolue
+    { address = 0x825428F4, size = 0x28 }, # cible de branchement non resolue
+    { address = 0x82542914, size = 0x8 }, # cible de branchement non resolue
+    { address = 0x82562B6C, size = 0xC }, # cible de branchement non resolue
+    { address = 0x82562B70, size = 0x8 }, # cible de branchement non resolue
+    { address = 0x826A5520, size = 0xA8 }, # cible de branchement non resolue
+    { address = 0x829B2280, size = 0x70 }, # cible de branchement non resolue
+    { address = 0x82A31920, size = 0x28 }, # cible de branchement non resolue
+    { address = 0x82A50D78, size = 0x14 }, # cible de branchement non resolue
+    { address = 0x82A54C48, size = 0x8C }, # cible de branchement non resolue
+    { address = 0x82A54CE8, size = 0x8 }, # cible de branchement non resolue
+    { address = 0x82A54D24, size = 0x8 }, # cible de branchement non resolue
+    { address = 0x82A54E4C, size = 0x14 }, # cible de branchement non resolue
+    { address = 0x82A55748, size = 0x8 }, # cible de branchement non resolue
+    { address = 0x82A55754, size = 0x8 }, # cible de branchement non resolue
+    { address = 0x82A55888, size = 0x8 }, # cible de branchement non resolue
+    { address = 0x82A56138, size = 0x14 }, # cible de branchement non resolue
+    { address = 0x82A56140, size = 0xC }, # cible de branchement non resolue
+    { address = 0x82A561DC, size = 0xC }, # cible de branchement non resolue
+    { address = 0x82ACE148, size = 0x3F0 }, # cible de branchement non resolue
+    { address = 0x82CB7874, size = 0x14 }, # cible de branchement non resolue
+    { address = 0x82CB7934, size = 0x14 }, # cible de branchement non resolue
+    { address = 0x82436CF8, size = 0xC }, # cible de branchement non resolue
+    { address = 0x824371D0, size = 0x8 }, # cible de branchement non resolue
+]
+
+
+# Inline 0xE0000000-view physical offset (bit 0x1000 from address >> 20 + 512) removed:
+# host pages are 16 KB so the views share offset 0. Generated by tools/find_e0_offset.py
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824395A8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82439698
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8243C600
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8243C730
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8243CCA4
+registers = ["r5"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8243CD24
+registers = ["r8"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8243CD28
+registers = ["r30"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8243E030
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82440934
+registers = ["r4"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82440938
+registers = ["r3"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82440BE8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82440C08
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82440C88
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82440CA0
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82440F78
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824412E4
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82441430
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824414EC
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82441544
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824415C0
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82441614
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82441DEC
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82441E14
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82441EA0
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824426F8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82444ACC
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82444B18
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82444B84
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244BEC0
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244C744
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244C890
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244CC88
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244CCD8
+registers = ["r8"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244CE04
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244D2F4
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244D660
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244D690
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244D748
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244DBC8
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244E0B0
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244E0E4
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244E198
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244E21C
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244E618
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244E638
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244F3B8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244F928
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244F948
+registers = ["r8"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244FA34
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244FB34
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8244FD14
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450760
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450780
+registers = ["r9"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824507B0
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824507D8
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450840
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450858
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450874
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450890
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824508F8
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450908
+registers = ["r4"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450934
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245094C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245099C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824509CC
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824509E4
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450A0C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450A38
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450A6C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450AAC
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450AC8
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450AE0
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450B54
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450B64
+registers = ["r5"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450B90
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450BA8
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450C08
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450C1C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450C40
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450C5C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450C7C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450CE0
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450CF0
+registers = ["r5"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450D1C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450D34
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450D98
+registers = ["r6"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450DA8
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450DC4
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450DF4
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450E60
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450E70
+registers = ["r5"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450E90
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450EB0
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450F10
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450F24
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450F44
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450F60
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450F7C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450FE8
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82450FF8
+registers = ["r5"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451024
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451040
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824510A8
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824510C8
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824510E0
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824510FC
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451164
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451170
+registers = ["r5"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245118C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824511B4
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451218
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451228
+registers = ["r4"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451248
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451268
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451284
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824512F0
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451300
+registers = ["r5"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245132C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451344
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824513C0
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824513D0
+registers = ["r5"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824513F4
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451414
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451474
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245148C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824514B4
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824514CC
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451510
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245153C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245154C
+registers = ["r5"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451588
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824515B4
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824515E8
+registers = ["r6"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245162C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451640
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451658
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824516D4
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824516EC
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245170C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451728
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451788
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245179C
+registers = ["r4"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824517C0
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824517E0
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451840
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451864
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245187C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824518A0
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824518B8
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245190C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245192C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245194C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451978
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824519E4
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824519F4
+registers = ["r5"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451A18
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451A30
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451A98
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451AAC
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451ACC
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451AE8
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451B04
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451B84
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451B90
+registers = ["r5"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451BB0
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451BD0
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451C44
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451C58
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451C78
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451C94
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82451CDC
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82452600
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82453D78
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824540DC
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824541AC
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824542E0
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82454458
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824547E8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82454C58
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82455750
+registers = ["r8"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245607C
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824568F0
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82456910
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82456A64
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82456AA8
+registers = ["r9"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82456AC4
+registers = ["r9"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82456AE8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82457190
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245719C
+registers = ["r8"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824571F4
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245726C
+registers = ["r9"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82457294
+registers = ["r9"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245762C
+registers = ["r8"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824576B4
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82457774
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824577C0
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824577E8
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245780C
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82457BB8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82457BF0
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82457C54
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82458054
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824582A8
+registers = ["r8"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824582AC
+registers = ["r5"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82458460
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245863C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82458948
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82458968
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82458A2C
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82458FE8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82459030
+registers = ["r5"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245903C
+registers = ["r9"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245916C
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245941C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82459654
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82459690
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824597A0
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82459854
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824598FC
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82459B30
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245A124
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245A1EC
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245AECC
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245B1A0
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245B7C8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245B7E8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245B8C4
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245B940
+registers = ["r5"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245B98C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245B9EC
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245BAE8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245BB74
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245BC44
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245BCBC
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245BDB4
+registers = ["r9"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245BDB8
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245BE54
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245BF4C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245BF58
+registers = ["r8"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245BFEC
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245C0B4
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245C11C
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245C1CC
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245C464
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245C550
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245C66C
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245C708
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245C748
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245CB5C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245DE88
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245DEA8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245F760
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245F890
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8245FBC8
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82460078
+registers = ["r9"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824600F0
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82460158
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824601F4
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824606D8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82460D94
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82461828
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824619A0
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824621F8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82462218
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82462978
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82462AE8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82462D00
+registers = ["r7"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82462EB4
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82462FE8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82463B50
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82463C4C
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82464184
+registers = ["r9"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824642F0
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82464368
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82464850
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82464B50
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82464BEC
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82464C14
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82464C3C
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824650F0
+registers = ["r9"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8246513C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824651EC
+registers = ["r7"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824653E4
+registers = ["r7"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8246586C
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824673A0
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824673C0
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82467D78
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82467E20
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x82467E50
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824683E8
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8246848C
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x824684B4
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8246A8C0
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8246ADA8
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8246AE48
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8246AF8C
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8246B150
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8246B820
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8246B844
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8246CB24
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+name = "E0NoPhysicalOffset"
+address = 0x8246CBBC
+registers = ["r10"]
+after_instruction = true
+

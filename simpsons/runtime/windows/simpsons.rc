@@ -1,0 +1,3 @@
+// Windows resources: donut icon, manifest (UTF-8 file names, sharp display on high density screens)
+1 ICON "simpsons.ico"
+1 24 "simpsons.manifest"

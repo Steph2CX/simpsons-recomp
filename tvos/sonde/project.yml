@@ -1,0 +1,20 @@
+name: Sonde
+options:
+  bundleIdPrefix: com.example
+settings:
+  DEVELOPMENT_TEAM: ${EQUIPE}
+  CODE_SIGN_STYLE: Automatic
+targets:
+  Sonde:
+    type: application
+    platform: tvOS
+    deploymentTarget: "17.0"
+    sources: [main.m]
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Sonde Simpson
+        UILaunchStoryboardName: ""
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: ${IDENTIFIANT}.sonde
+      CLANG_ENABLE_OBJC_ARC: YES

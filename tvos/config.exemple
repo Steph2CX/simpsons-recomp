@@ -1,0 +1,9 @@
+# Reglages personnels pour l'Apple TV : copier ce fichier en tvos/config.local et le remplir.
+# EQUIPE      : identifiant d'equipe developpeur Apple (Xcode > Settings > Accounts, 10 caracteres)
+# IDENTIFIANT : identifiant unique de l'application (a inventer, par exemple com.votrenom.simpsons)
+# APPAREIL    : identifiant de l'Apple TV, donne par : xcrun devicectl list devices
+# IDENTITE    : empreinte du certificat « Apple Development », donnee par : security find-identity -v -p codesigning
+EQUIPE=""
+IDENTIFIANT=""
+APPAREIL=""
+IDENTITE=""
