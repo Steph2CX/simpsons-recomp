@@ -458,13 +458,26 @@ namespace
             return false;
         std::vector<VkPhysicalDevice> devices(count);
         vkEnumeratePhysicalDevices(g_instance, &count, devices.data());
-        // A PC with integrated and dedicated graphics lists both: take the dedicated card
+        // A discrete GPU first (laptop with Intel + NVIDIA), if it can draw into the window
         g_physicalDevice = devices[0];
         for (VkPhysicalDevice device : devices)
         {
             VkPhysicalDeviceProperties candidate;
             vkGetPhysicalDeviceProperties(device, &candidate);
-            if (candidate.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+            if (candidate.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || candidate.apiVersion < VK_API_VERSION_1_3)
+                continue;
+            uint32_t familyCount = 0;
+            vkGetPhysicalDeviceQueueFamilyProperties(device, &familyCount, nullptr);
+            std::vector<VkQueueFamilyProperties> families(familyCount);
+            vkGetPhysicalDeviceQueueFamilyProperties(device, &familyCount, families.data());
+            bool usable = false;
+            for (uint32_t i = 0; i < familyCount && !usable; i++)
+            {
+                VkBool32 present = VK_FALSE;
+                vkGetPhysicalDeviceSurfaceSupportKHR(device, i, g_surface, &present);
+                usable = (families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) && present;
+            }
+            if (usable)
             {
                 g_physicalDevice = device;
                 break;
