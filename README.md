@@ -33,6 +33,20 @@ version française (PAL) ; le code est identique en NTSC-U et en PAL italien/esp
 | Windows | `%LOCALAPPDATA%\Les Simpson - Le Jeu` |
 | Linux | `~/.local/share/les-simpson-le-jeu` |
 
+## Améliorations par rapport à la console
+
+- **Démarrage plus rapide** : les vidéos des logos EA, Fox et Gracie Films sont passées et l'écran des mentions
+  légales Fox est retiré (`tools/retirer_fox.py`) : l'écran « Appuyez sur START » arrive en 8 s environ au lieu de
+  24 s. `SIMPSONS_LOGOS=1` remet les vidéos.
+- **Lissage des textures** : le jeu ne donne qu'un seul niveau de détail à certaines images affichées bien plus
+  petites que leur taille réelle (le logo de l'écran titre, 2048×1024, s'affiche sur environ 600 pixels), d'où des
+  bords crénelés. Le runtime leur fabrique des versions réduites (mipmaps) : logo du titre et police des textes
+  nettement plus lisses. La liste est dans `simpsons/modifications/textures/*.mips`.
+- **Logo « EA | 5K ULTRA HD »** à la place de « EA | HD » sur l'écran de démarrage (`tools/logo_4k.py`).
+- **Textes adaptés** : « Ne pas éteindre la console Xbox 360 » devient « Ne pas quitter le jeu »
+  (`simpsons/modifications/textes_fr.tsv`, appliqué par `tools/modifier_textes.py`).
+- **60 images/s** au lieu de 30, et résolution interne jusqu'en 5K.
+
 ## Préparer le projet
 
 Outils (Mac) : Xcode, `brew install cmake ninja python autoconf automake libtool pkg-config molten-vk xcodegen`.
@@ -110,6 +124,7 @@ plus récent (glibc 2.35), un processeur x86-64-v3 (Intel Haswell, AMD Ryzen) et
 |---|---|
 | `SIMPSONS_RESOLUTION=1..4` | résolution interne (720p, 1440p, 4K, 5K) |
 | `SIMPSONS_30IPS=1` | 30 images/s comme sur la console |
+| `SIMPSONS_LOGOS=1` | vidéos des logos au démarrage |
 | `SIMPSONS_FENETRE=1` | fenêtre au lieu du plein écran (Mac) |
 | `SIMPSONS_CONSOLE=1` | journal sur la sortie d'erreur au lieu de `jeu.log` |
 | `SIMPSONS_CAPTURE=<images>` | captures d'écran (`recomp/capture_N.ppm`) |
