@@ -10,6 +10,7 @@ processeur graphique Xenos (rendu Vulkan, traduction des shaders pendant la part
 version française (PAL) ; le code est identique en NTSC-U et en PAL italien/espagnol.
 
 <p align="center">
+  <img src="captures/titre.jpg" width="98.5%" alt="Écran titre « Les Simpson : le jeu »">
   <img src="captures/chocolat.jpg" width="49%" alt="Homer au Pays du Chocolat">
   <img src="captures/springfield.jpg" width="49%" alt="La famille devant le SequelStop à Springfield">
   <img src="captures/dauphins.jpg" width="49%" alt="Combat contre les dauphins sur les quais">
