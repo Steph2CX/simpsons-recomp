@@ -407,8 +407,9 @@ namespace
 
     // Mac: 5K on Max/Ultra chips (M2 Max x4, 80 Bites combat: 58.5 images/s, min 53), 4K on Pro chips, 1440p on base
     // chips (MacBook Air: fewer GPU cores, no fan, often 8 GB shared memory). PC with a dedicated card: 5K from 12 GB
-    // of video memory, 4K from 8 GB, 1440p below (thresholds not yet measured on a real card). PC without one: 1440p on
-    // Windows, 720p on Linux (ThinkPad L13, Iris Xe: 57 images/s in 80 Bites at x1, 29 at x2). Apple TV: 720p.
+    // of video memory, 4K from 8 GB, 1440p below (thresholds not yet measured on a real card). PC without one: 720p
+    // (ThinkPad L13, Iris Xe: 57 images/s in 80 Bites at x1, 29 at x2; Windows exe under Proton: 58-60 at x1, 47-52 at
+    // x2; the Surface has the same chip family). Apple TV: 720p.
     uint32_t ChooseResolutionScale(const VkPhysicalDeviceProperties& properties)
     {
         const char* value = getenv("SIMPSONS_RESOLUTION");
@@ -433,12 +434,7 @@ namespace
                     videoMemory = std::max(videoMemory, memory.memoryHeaps[i].size);
         }
         uint32_t videoGigabytes = uint32_t((videoMemory + (512ull << 20)) >> 30); // 11.9 GB reported for a 12 GB card
-#ifdef _WIN32
-        int integratedScale = 2;
-#else
-        int integratedScale = 1;
-#endif
-        int defaultScale = videoMemory == 0 ? integratedScale : videoGigabytes >= 12 ? 4 : videoGigabytes >= 8 ? 3 : 2;
+        int defaultScale = videoMemory == 0 ? 1 : videoGigabytes >= 12 ? 4 : videoGigabytes >= 8 ? 3 : 2;
         char detail[64];
         if (videoMemory == 0)
             snprintf(detail, sizeof(detail), "puce integree");

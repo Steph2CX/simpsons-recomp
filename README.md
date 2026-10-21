@@ -40,7 +40,7 @@ graphique.
 | PC avec carte graphique dédiée de 12 Go ou plus | 5K |
 | PC avec carte graphique dédiée de 8 à 11 Go | 4K |
 | PC avec carte graphique dédiée de moins de 8 Go | 1440p |
-| PC sans carte dédiée (puce Intel ou AMD intégrée) | 1440p sur Windows, 720p sur Linux |
+| PC sans carte dédiée (puce Intel ou AMD intégrée) | 720p |
 | Apple TV | 720p |
 
 Les seuils des cartes dédiées n'ont pas encore été vérifiés sur un vrai PC. Le choix est écrit dans `jeu.log`
