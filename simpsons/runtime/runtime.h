@@ -143,3 +143,7 @@ uint32_t InitGuestThreadContext(PPCContext& ctx, uint32_t stackSize);
 
 // Register the calling host thread as the guest main thread
 PPCContext& InitMainGuestThread(uint32_t stackSize);
+
+// The calling thread runs game work (guest code, GPU, sound): on Apple, highest QoS so the scheduler keeps it on the
+// performance cores (only 2 on the Apple TV's A15) rather than the efficiency ones
+void SetGameThreadPriority();

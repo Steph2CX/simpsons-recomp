@@ -232,6 +232,7 @@ static bool StepContext(XmaContext& c)
 
 static void XmaThread()
 {
+    SetGameThreadPriority();
     static const bool trace = getenv("SIMPSONS_TRACE_AUDIO") != nullptr;
     auto lastReport = std::chrono::steady_clock::now(), lastCleanup = lastReport;
     while (true)

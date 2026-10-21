@@ -58,6 +58,26 @@ target_link_libraries(XenosTranslate PUBLIC
     "${XENON_RECOMP_BUILD}/thirdparty/fmt/libfmt.a")
 set_target_properties(XenosTranslate PROPERTIES BUILD_RPATH "${XENOS_THIRDPARTY}/dxc-bin/lib/arm64")
 
+# Hash of the shader translator (sources + DXC): names the folder of the translated shader cache (renderer.cpp)
+set(SHADER_TRANSLATOR_FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/xenos/xenos_translate.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/xenos/xenos_translate.h"
+    "${XENOS_RECOMP_ROOT}/XenosRecomp/shader_recompiler.cpp"
+    "${XENOS_RECOMP_ROOT}/XenosRecomp/shader_recompiler.h"
+    "${XENOS_RECOMP_ROOT}/XenosRecomp/shader_common.h"
+    "${XENOS_RECOMP_ROOT}/XenosRecomp/shader.h"
+    "${XENOS_RECOMP_ROOT}/XenosRecomp/shader_code.h"
+    "${XENOS_RECOMP_ROOT}/XenosRecomp/constant_table.h"
+    "${XENOS_RECOMP_ROOT}/XenosRecomp/dxc_compiler.cpp"
+    "${XENOS_RECOMP_ROOT}/XenosRecomp/dxc_compiler.h"
+    "${DXC_LIBRARY}")
+string(JOIN "," SHADER_TRANSLATOR_LIST ${SHADER_TRANSLATOR_FILES})
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/shader_translator_version.h"
+    COMMAND ${CMAKE_COMMAND} "-DFILES=${SHADER_TRANSLATOR_LIST}" "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/shader_translator_version.h"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/empreinte_traducteur.cmake"
+    DEPENDS ${SHADER_TRANSLATOR_FILES} "${CMAKE_CURRENT_SOURCE_DIR}/empreinte_traducteur.cmake"
+    VERBATIM)
+
 add_executable(xenos_test xenos/xenos_test.cpp)
 target_link_libraries(xenos_test PRIVATE XenosTranslate)
 set_target_properties(xenos_test PROPERTIES BUILD_RPATH "${XENOS_THIRDPARTY}/dxc-bin/lib/arm64")
@@ -80,7 +100,9 @@ add_executable(SimpsonsRecomp
     debug_hooks.cpp
     game_fixes.cpp
     native_functions.cpp
-    import_stubs.cpp)
+    import_stubs.cpp
+    "${CMAKE_CURRENT_BINARY_DIR}/shader_translator_version.h")
+target_include_directories(SimpsonsRecomp PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 if(WIN32)
     target_sources(SimpsonsRecomp PRIVATE pc_window.cpp windows/simpsons.rc)
 elseif(SIMPSONS_TVOS)

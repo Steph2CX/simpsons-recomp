@@ -496,6 +496,7 @@ static void ExecuteBuffer(uint32_t address, uint32_t sizeDwords)
 
 static void GpuThread()
 {
+    SetGameThreadPriority();
     while (true)
     {
         uint32_t writePointer = ReadRegister(REG_CP_RB_WPTR) % std::max<uint32_t>(g_ringSizeDwords, 1);

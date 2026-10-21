@@ -15,6 +15,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#ifdef __APPLE__
+#include <pthread.h>
+#endif
 
 #define KERNEL_FUNC(name) PPC_FUNC(__imp__##name)
 
@@ -264,6 +267,7 @@ struct ThreadExit
 static void RunGuestThread(GuestThread* thread, uint32_t startup, uint32_t start, uint32_t context)
 {
     t_currentThread = thread;
+    SetGameThreadPriority();
     {
         std::unique_lock lock(g_dispatcherMutex);
         DispatcherWaiter waiter;
@@ -330,8 +334,16 @@ static void SetThreadProcessor(GuestThread* thread, uint32_t affinity)
         g_base[thread->ctx.r13.u32 + 0x10C] = uint8_t(__builtin_ctz(affinity) % 6);
 }
 
+void SetGameThreadPriority()
+{
+#ifdef __APPLE__
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+#endif
+}
+
 PPCContext& InitMainGuestThread(uint32_t stackSize)
 {
+    SetGameThreadPriority();
     t_currentThread = RegisterThread(stackSize);
     return t_currentThread->ctx;
 }

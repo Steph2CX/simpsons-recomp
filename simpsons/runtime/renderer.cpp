@@ -36,6 +36,8 @@
 #define XXH_INLINE_ALL
 #include <xxhash.h>
 
+#include "shader_translator_version.h" // SHADER_TRANSLATOR_VERSION
+
 int PlatformGpuCoreCount(); // mac_window.mm
 bool RuntimeLowMemory(); // main.cpp
 
@@ -1057,6 +1059,7 @@ namespace
 
 void InputHandleEvent(const SDL_Event& event);
 void InputPoll();
+bool InputQuitRequested();
 
 bool RendererInit()
 {
@@ -1064,8 +1067,8 @@ bool RendererInit()
     // reaches the top of the screen
     SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, "1");
 #ifdef SIMPSONS_TVOS
-    // The Siri Remote is not a gamepad for the game (it would take player 1 from the real controller); its Menu
-    // button still goes back to the Apple TV home screen
+    // The Siri Remote is not a gamepad for the game (it would take player 1 from the real controller). Back to the
+    // Apple TV home screen: hold B (InputQuitRequested)
     SDL_SetHint(SDL_HINT_TV_REMOTE_AS_JOYSTICK, "0");
 #endif
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD))
@@ -1279,6 +1282,8 @@ void RendererRunEventLoop()
             InputPoll();
         }
         InputPoll();
+        if (InputQuitRequested())
+            g_running = false;
         UpdateWindowTitle();
     }
 }
@@ -1297,29 +1302,10 @@ static const std::filesystem::path& ShaderCacheFolder()
     {
         if (getenv("SIMPSONS_SANS_CACHE_SHADERS") || getenv("SIMPSONS_DUMP_SHADERS") || getenv("SIMPSONS_DEBUG_PS"))
             return std::filesystem::path();
-        std::filesystem::path program;
-#ifdef _WIN32
-        wchar_t name[MAX_PATH];
-        if (GetModuleFileNameW(nullptr, name, MAX_PATH))
-            program = name;
-#elif defined(__APPLE__)
-        char name[4096];
-        uint32_t size = sizeof(name);
-        if (_NSGetExecutablePath(name, &size) == 0)
-            program = name;
-#else
-        std::error_code ignored;
-        program = std::filesystem::read_symlink("/proc/self/exe", ignored);
-#endif
+        // One folder per version of the translator (hash of its sources and of DXC, empreinte_traducteur.cmake):
+        // translated shaders survive rebuilds of the rest of the program
+        const char* build = SHADER_TRANSLATOR_VERSION;
         std::error_code error;
-        uint64_t version[2] = { std::filesystem::file_size(program, error), 0 };
-        if (error)
-            return std::filesystem::path();
-        version[1] = uint64_t(std::filesystem::last_write_time(program, error).time_since_epoch().count());
-        if (error)
-            return std::filesystem::path();
-        char build[20];
-        snprintf(build, sizeof(build), "%016llX", (unsigned long long)XXH3_64bits(version, sizeof(version)));
         std::filesystem::path root = "cache-shaders";
         if (std::filesystem::exists(root, error))
             for (const auto& old : std::filesystem::directory_iterator(root, error))

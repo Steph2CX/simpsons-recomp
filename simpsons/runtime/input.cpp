@@ -161,6 +161,31 @@ namespace
     }
 }
 
+// Main thread: on the Apple TV, holding B for 2 s quits to the home screen (a short press stays the game's B, and
+// tvOS gives no Menu button to the app while a gamepad is in use)
+bool InputQuitRequested()
+{
+#ifdef SIMPSONS_TVOS
+    static Uint64 heldSince = 0;
+    bool held = false;
+    for (SDL_Gamepad* gamepad : g_gamepads)
+        held |= gamepad != nullptr && SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST);
+    if (!held)
+    {
+        heldSince = 0;
+        return false;
+    }
+    if (heldSince == 0)
+        heldSince = SDL_GetTicks();
+    if (SDL_GetTicks() - heldSince < 2000)
+        return false;
+    fprintf(stderr, "[manette] B maintenu : retour a l'accueil\n");
+    return true;
+#else
+    return false;
+#endif
+}
+
 // Main thread: samples the gamepad and the keyboard
 void InputPoll()
 {
