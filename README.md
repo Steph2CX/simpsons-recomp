@@ -36,7 +36,7 @@ cœurs graphiques de la puce.
 |---|---|
 | puce Max ou Ultra (30 cœurs graphiques ou plus) | 5K (5120×2880), 60 images/s testé sur M2 Max |
 | puce Pro (14 à 29 cœurs) | 4K (3840×2160) |
-| puce de base, MacBook Air (moins de 14 cœurs) | 1440p (2560×1440) |
+| puce de base, MacBook Air (moins de 14 cœurs) | 1440p (2560×1440), pas encore mesuré : 60 images/s peut ne pas tenir dans les passages chargés |
 
 Sur Windows le jeu démarre en 1440p, sur Linux en 720p et sur l'Apple TV en 720p. `SIMPSONS_RESOLUTION` (voir
 [Réglages](#réglages-variables-denvironnement)) force une autre résolution ; si le jeu saccade, baisser d'un cran.
