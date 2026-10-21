@@ -72,7 +72,7 @@ forces another resolution; if the game stutters, go one step lower.
   their real size (the title screen logo, 2048×1024, covers about 600 pixels), which gives jagged edges. The runtime
   builds downscaled versions (mipmaps) for them: the title logo and the text font are much smoother. The list is in
   `simpsons/modifications/textures/*.mips`.
-- **"EA | 5K ULTRA HD" logo** instead of "EA | HD" on the startup screen (`tools/logo_4k.py`).
+- **"EA | 5K ULTRA HD" logo** instead of "EA | HD" on the startup screen (image not included in the repository: `python3 tools/logo_4k.py` makes it, on a Mac).
 - **Text adapted to a computer**: mentions of the Xbox 360 console and Xbox LIVE are gone ("Do not turn off the Xbox
   360 console" becomes "Do not quit the game", "on your Xbox 360 console" becomes "on your computer"…), and the
   startup screen says "5K ULTRA HD" instead of "HD COMPATIBLE" (`simpsons/modifications/textes_fr.tsv`, applied by

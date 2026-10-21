@@ -73,7 +73,7 @@ Les seuils des cartes dédiées n'ont pas encore été vérifiés sur un vrai PC
   petites que leur taille réelle (le logo de l'écran titre, 2048×1024, s'affiche sur environ 600 pixels), d'où des
   bords crénelés. Le runtime leur fabrique des versions réduites (mipmaps) : logo du titre et police des textes
   nettement plus lisses. La liste est dans `simpsons/modifications/textures/*.mips`.
-- **Logo « EA | 5K ULTRA HD »** à la place de « EA | HD » sur l'écran de démarrage (`tools/logo_4k.py`).
+- **Logo « EA | 5K ULTRA HD »** à la place de « EA | HD » sur l'écran de démarrage (image absente du dépôt : `python3 tools/logo_4k.py` la fabrique, sur Mac).
 - **Textes adaptés à l'ordinateur** : les mentions de la console Xbox 360 et du Xbox LIVE disparaissent (« Ne pas
   éteindre la console Xbox 360 » devient « Ne pas quitter le jeu », « sur votre console Xbox 360 » devient « sur
   votre ordinateur »…), et l'écran de démarrage annonce « 5K ULTRA HD » au lieu de « COMPATIBLE HD »

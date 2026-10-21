@@ -12,6 +12,7 @@
 !/simpsons/runtime/
 !/simpsons/lib/
 !/simpsons/modifications/
+/simpsons/modifications/textures/*.bin
 !/simpsons/run.sh
 !/simpsons/recomp/
 /simpsons/recomp/*
