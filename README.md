@@ -18,6 +18,21 @@ version française (PAL) ; le code est identique en NTSC-U et en PAL italien/esp
 | Windows 10/11 x64 | compilé depuis le Mac ou Linux, peu testé | `windows/creer_dossier_windows.sh` |
 | Linux x64 | jouable | `linux/construire.sh` (sur le PC Linux) |
 
+## Jouer
+
+- **Manette** : une manette Xbox (filaire ou Bluetooth) ou compatible XInput fonctionne directement.
+- **Clavier** : flèches ou ZQSD pour se déplacer, Entrée = START, Espace = A, E = B, R = X, F = Y.
+- **Plein écran** : le jeu démarre en plein écran ; Cmd+F (Mac), Alt+Entrée ou F11 pour passer en fenêtre.
+- **Apple TV** : maintenir B pendant 2 secondes pour revenir à l'écran d'accueil.
+- Le jeu tourne à 60 images/s (`SIMPSONS_30IPS=1` pour revenir aux 30 images/s d'origine).
+
+| Plateforme | Sauvegardes et journal (`jeu.log`) |
+|---|---|
+| Mac | `~/Library/Application Support/Les Simpson - Le Jeu` |
+| Apple TV | `Library/Caches/Les Simpson - Le Jeu` (dans l'application) |
+| Windows | `%LOCALAPPDATA%\Les Simpson - Le Jeu` |
+| Linux | `~/.local/share/les-simpson-le-jeu` |
+
 ## Préparer le projet
 
 Outils (Mac) : Xcode, `brew install cmake ninja python autoconf automake libtool pkg-config molten-vk xcodegen`.
@@ -68,11 +83,33 @@ avec `correctifs/dxc-tvos.patch`. L'icône se fabrique avec `tvos/icone/fabrique
 capture 4K de l'écran titre (`SIMPSONS_RESOLUTION=3 SIMPSONS_CAPTURE=900`). `tvos/sonde` mesure ce que l'Apple TV
 autorise (mémoire, espace d'adresses, dossiers).
 
+## Windows
+
+Compilation croisée depuis le Mac ou Linux avec [llvm-mingw](https://github.com/mingw-w64/llvm-mingw) (version
+20261006, à décompresser dans `windows/outils/`) et les fichiers CMake `windows/mingw-x64.cmake` (Mac) ou
+`windows/mingw-x64-linux.cmake` (Linux) ; SDL3 et FFmpeg compilés pour Windows vont dans `windows/prefix`. Une fois
+`windows/build` configuré, `zsh windows/creer_dossier_windows.sh` compile et prépare
+`windows/Les Simpson - Le Jeu (Windows)/` (programme, DLL de DXC, données du jeu reprises de l'application Mac,
+`LISEZMOI.txt`), à copier sur le PC.
+
+## Linux
+
+Sur le PC Linux (x64), dans une copie du dossier du projet qui contient déjà `XenonRecomp`, `XenosRecomp`,
+`simpsons/ppc` et les sources de `portable/src` (SDL3 et FFmpeg, récupérées par
+`portable/construire_dependances_mac.sh`) :
+```sh
+bash linux/construire.sh
+```
+Le script installe les paquets nécessaires (apt, dnf ou pacman), compile SDL3, FFmpeg et le jeu, puis installe le
+jeu dans `~/Jeux/Les Simpson - Le Jeu` avec un raccourci dans le menu des applications. Il faut un Linux de 2022 ou
+plus récent (glibc 2.35), un processeur x86-64-v3 (Intel Haswell, AMD Ryzen) et un pilote Vulkan.
+
 ## Réglages (variables d'environnement)
 
 | Variable | Effet |
 |---|---|
 | `SIMPSONS_RESOLUTION=1..4` | résolution interne (720p, 1440p, 4K, 5K) |
+| `SIMPSONS_30IPS=1` | 30 images/s comme sur la console |
 | `SIMPSONS_FENETRE=1` | fenêtre au lieu du plein écran (Mac) |
 | `SIMPSONS_CONSOLE=1` | journal sur la sortie d'erreur au lieu de `jeu.log` |
 | `SIMPSONS_CAPTURE=<images>` | captures d'écran (`recomp/capture_N.ppm`) |
