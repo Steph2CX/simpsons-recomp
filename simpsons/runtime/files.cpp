@@ -134,6 +134,13 @@ bool CloseFileHandle(uint32_t handle)
 
 static std::string ToLower(std::string text);
 
+// Language of the disc: French when it has French movies (movies\fr), English otherwise (American disc: movies\en)
+bool FilesFrenchDisc()
+{
+    static const bool french = fs::is_directory(g_gameRoot / "movies" / "fr");
+    return french;
+}
+
 // Skipping movies (Escape, renderer.cpp): while a .vp6 file is open, the next "has the movie ended?" question of the
 // game's movie player is answered yes (game_fixes.cpp), so the game ends the movie its own way and goes on.
 static std::atomic<bool> g_movieSkipRequested{ false };

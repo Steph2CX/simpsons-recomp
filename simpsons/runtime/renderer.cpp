@@ -43,6 +43,14 @@
 int PlatformGpuCoreCount(); // mac_window.mm
 void FilesSkipMovies();      // files.cpp
 double FilesMovieSeconds(std::string* language);
+bool FilesFrenchDisc();
+
+// In the language of the disc
+static const char* WindowTitle()
+{
+    return FilesFrenchDisc() ? "Les Simpson : le jeu" : "The Simpsons Game";
+}
+
 bool RuntimeLowMemory(); // main.cpp
 
 #define VK_CHECK(call)                                                                  \
@@ -1642,7 +1650,7 @@ bool RendererInit()
     if (coverScreen)
         windowFlags |= SDL_WINDOW_HIDDEN;
 #endif
-    g_window = SDL_CreateWindow("Les Simpson : le jeu", TARGET_WIDTH, TARGET_HEIGHT, windowFlags);
+    g_window = SDL_CreateWindow(WindowTitle(), TARGET_WIDTH, TARGET_HEIGHT, windowFlags);
 
     if (g_window == nullptr)
     {
@@ -1755,11 +1763,11 @@ static void UpdateWindowTitle()
     if (ticks - lastTicks < 500)
         return;
     uint64_t frame = GpuFrameCount();
-    std::string title = "Les Simpson : le jeu";
+    std::string title = WindowTitle();
     if (!PlatformIsFullscreen(g_window))
     {
         char fps[32];
-        snprintf(fps, sizeof(fps), " - %.0f images/s", (frame - lastFrame) * 1000.0 / (ticks - lastTicks));
+        snprintf(fps, sizeof(fps), FilesFrenchDisc() ? " - %.0f images/s" : " - %.0f fps", (frame - lastFrame) * 1000.0 / (ticks - lastTicks));
         title += fps;
     }
     lastTicks = ticks;
