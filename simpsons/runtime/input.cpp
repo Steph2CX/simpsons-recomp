@@ -88,6 +88,13 @@ void PostNotification(uint32_t id, uint32_t param);
 void InputHandleEvent(const SDL_Event& event)
 {
     constexpr uint32_t XN_SYS_INPUTDEVICESCHANGED = 0x00000012;
+    // Every device SDL sees, gamepad or not (hot-plug diagnostics in jeu.log)
+    if (event.type == SDL_EVENT_JOYSTICK_ADDED)
+        fprintf(stderr, "[manette] appareil detecte : %s (%04X:%04X, manette : %s)\n", SDL_GetJoystickNameForID(event.jdevice.which),
+            SDL_GetJoystickVendorForID(event.jdevice.which), SDL_GetJoystickProductForID(event.jdevice.which),
+            SDL_IsGamepad(event.jdevice.which) ? "oui" : "non");
+    else if (event.type == SDL_EVENT_JOYSTICK_REMOVED)
+        fprintf(stderr, "[manette] appareil retire\n");
     if (event.type == SDL_EVENT_GAMEPAD_ADDED)
     {
         for (uint32_t player = 0; player < MAX_PLAYERS; player++)
@@ -101,7 +108,10 @@ void InputHandleEvent(const SDL_Event& event)
                 continue;
             g_gamepads[player] = SDL_OpenGamepad(event.gdevice.which);
             if (g_gamepads[player] == nullptr)
+            {
+                fprintf(stderr, "[manette] ouverture impossible : %s\n", SDL_GetError());
                 return;
+            }
             fprintf(stderr, "[manette] joueur %u : %s\n", player + 1, SDL_GetGamepadName(g_gamepads[player]));
             SDL_SetGamepadPlayerIndex(g_gamepads[player], int(player));
             {
