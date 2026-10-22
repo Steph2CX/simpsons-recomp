@@ -57,15 +57,26 @@ cmake -S "$root/XenonRecomp" -B "$here/build-xenon" -G Ninja -DCMAKE_BUILD_TYPE=
 cmake --build "$here/build-xenon" -j "$jobs" --target XenonUtils disasm fmt
 
 echo "== 4/5 Le jeu (long : plus de 300 fichiers) =="
-cmake -S "$root/simpsons/runtime" -B "$here/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    "-DCMAKE_CXX_FLAGS=-march=x86-64-v3" -DCMAKE_PREFIX_PATH="$prefix" -DSDL3_DIR="$here/prefix-sdl/lib/cmake/SDL3" \
+# Profile-guided version (build-pgo) when the measurements from linux/pgo are there, else the plain one (build)
+profile="$here/pgo/simpsons.profdata"
+flags="-march=x86-64-v3"
+build="$here/build"
+if [[ -f "$profile" ]]; then
+    echo "Version optimisee avec les mesures de $profile"
+    flags="$flags -fprofile-instr-use=$profile -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date"
+    build="$here/build-pgo"
+fi
+cmake -S "$root/simpsons/runtime" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    "-DCMAKE_CXX_FLAGS=$flags" -DCMAKE_PREFIX_PATH="$prefix" -DSDL3_DIR="$here/prefix-sdl/lib/cmake/SDL3" \
     -DXENON_RECOMP_BUILD="$here/build-xenon"
-cmake --build "$here/build" -j "$jobs" --target SimpsonsRecomp
+cmake --build "$build" -j "$jobs" --target SimpsonsRecomp
 
 echo "== 5/5 Dossier du jeu =="
 out="$here/Les Simpson - Le Jeu (Linux)"
 mkdir -p "$out"
-cp "$here/build/SimpsonsRecomp" "$out/les-simpson-le-jeu"
+# The previous program is kept as les-simpson-le-jeu.avant-construire
+[[ -f "$out/les-simpson-le-jeu" ]] && cp "$out/les-simpson-le-jeu" "$out/les-simpson-le-jeu.avant-construire"
+cp "$build/SimpsonsRecomp" "$out/les-simpson-le-jeu"
 cp "$root/XenosRecomp/thirdparty/dxc-bin/lib/x64/libdxcompiler.so" "$out/"
 game="$root/simpsons/game"
 [[ -f "$game/default.xex" ]] || game="$root/windows/Les Simpson - Le Jeu (Windows)/game"
