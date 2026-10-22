@@ -137,6 +137,7 @@ namespace
     // START." (texte_video.h, files.cpp);
     // drawn with the FXAA pass's layout and vertex shader
     VkPipeline g_skipTextPipeline = VK_NULL_HANDLE;
+    VkSampler g_skipTextSampler = VK_NULL_HANDLE; // trilinear: the 5K message is shown down to a fifth of its size
     constexpr uint32_t SKIP_TEXT_COUNT = sizeof(SKIP_TEXTS) / sizeof(SKIP_TEXTS[0]); // languages
     VkDescriptorSet g_skipTextSets[SKIP_TEXT_COUNT]{};
     bool g_skipTextUploaded[SKIP_TEXT_COUNT]{};
@@ -780,7 +781,7 @@ struct Push
 
 float4 main(float4 position : SV_Position) : SV_Target
 {
-    return g_text.SampleLevel(g_sampler, (position.xy - g_push.origin) * g_push.rcpSize, 0.0) * g_push.alpha;
+    return g_text.Sample(g_sampler, (position.xy - g_push.origin) * g_push.rcpSize) * g_push.alpha;
 }
 )";
 
@@ -831,6 +832,9 @@ float4 main(float4 position : SV_Position) : SV_Target
         samplerInfo.minFilter = VK_FILTER_LINEAR;
         samplerInfo.addressModeU = samplerInfo.addressModeV = samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         VK_CHECK(vkCreateSampler(g_device, &samplerInfo, nullptr, &g_fxaaSampler));
+        samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        samplerInfo.maxLod = VK_LOD_CLAMP_NONE;
+        VK_CHECK(vkCreateSampler(g_device, &samplerInfo, nullptr, &g_skipTextSampler));
 
         VkDescriptorSetLayoutBinding bindings[2] = { { 0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
             { 1, VK_DESCRIPTOR_TYPE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr } };
@@ -1178,8 +1182,17 @@ float4 main(float4 position : SV_Position) : SV_Target
             if (language == SKIP_TEXTS[i].language)
                 *text = i;
         }
-        constexpr double SHOWN = 10.0, FADE = 0.5;
+        constexpr double SHOWN = 7.0, FADE = 0.5;
         return float(std::clamp(std::min(*seconds / FADE, (SHOWN - *seconds) / FADE), 0.0, 1.0));
+    }
+
+    // Mipmap levels of a message image, down to 32 pixels high or less
+    uint32_t SkipTextLevels(const SkipText& text)
+    {
+        uint32_t levels = 1;
+        for (uint32_t height = text.height; height > 32; height /= 2)
+            levels++;
+        return levels;
     }
 
     // Draws the message over the picture, into the swapchain image (COLOR_ATTACHMENT_OPTIMAL)
@@ -1192,10 +1205,11 @@ float4 main(float4 position : SV_Position) : SV_Target
             if (texture.image == VK_NULL_HANDLE)
             {
                 if (!CreateImage(texture, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8B8A8_UNORM, { text.width, text.height, 1 },
-                        1, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT))
+                        1, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                        VK_IMAGE_ASPECT_COLOR_BIT, 0, {}, SkipTextLevels(text)))
                     return;
                 VkDescriptorImageInfo images[2] = { { VK_NULL_HANDLE, texture.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
-                    { g_fxaaSampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED } };
+                    { g_skipTextSampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED } };
                 VkWriteDescriptorSet writes[2];
                 for (uint32_t i = 0; i < 2; i++)
                 {
@@ -1219,19 +1233,56 @@ float4 main(float4 position : SV_Position) : SV_Target
             copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
             copy.imageExtent = { text.width, text.height, 1 };
             vkCmdCopyBufferToImage(g_commandBuffer, g_uploadBuffer, texture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
-            ImageBarrier(texture.image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+            // Mipmaps: each level halves the previous one (premultiplied colours, so linear filtering is right)
+            uint32_t levels = SkipTextLevels(text);
+            int32_t width = int32_t(text.width), height = int32_t(text.height);
+            for (uint32_t level = 1; level < levels; level++)
+            {
+                VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+                barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+                barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                barrier.image = texture.image;
+                barrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, level - 1, 1, 0, 1 };
+                vkCmdPipelineBarrier(g_commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0,
+                    nullptr, 1, &barrier);
+                VkImageBlit blit{};
+                blit.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level - 1, 0, 1 };
+                blit.srcOffsets[1] = { width, height, 1 };
+                width = std::max(width / 2, 1);
+                height = std::max(height / 2, 1);
+                blit.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level, 0, 1 };
+                blit.dstOffsets[1] = { width, height, 1 };
+                vkCmdBlitImage(g_commandBuffer, texture.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, texture.image,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+            }
+            // Every level to shader reading: the last one is still TRANSFER_DST, the others TRANSFER_SRC
+            VkImageMemoryBarrier barriers[2] = { { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER }, { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER } };
+            for (uint32_t i = 0; i < 2; i++)
+            {
+                barriers[i].oldLayout = i == 0 ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                barriers[i].newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                barriers[i].srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+                barriers[i].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                barriers[i].image = texture.image;
+                barriers[i].subresourceRange = i == 0 ? VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, levels - 1, 0, 1 }
+                                                      : VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, levels - 1, 1, 0, 1 };
+            }
+            vkCmdPipelineBarrier(g_commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr,
+                0, nullptr, levels > 1 ? 2 : 1, levels > 1 ? barriers : &barriers[1]);
             g_skipTextUploaded[textIndex] = true;
         }
-        // Where and how large the title screen shows its "Appuyez sur START.", with its pulse: the text grows and
-        // shrinks around its centre at a constant speed
-        float phase = float(std::fmod(seconds / SKIP_TEXT_PERIOD, 1.0));
+        // With the title screen's "Appuyez sur START." pulse (the text grows and shrinks around its centre at a constant
+        // speed) at half its speed, centred, 60 % of its size and lower than it (91 % of the picture's height instead of
+        // 87 %)
+        constexpr float SIZE = 0.6f, CENTER_Y = 0.91f, SLOWER = 2.0f;
+        float phase = float(std::fmod(seconds / (SKIP_TEXT_PERIOD * SLOWER), 1.0));
         float pulse = SKIP_TEXT_SMALLEST + (1.0f - SKIP_TEXT_SMALLEST) * (1.0f - std::fabs(2.0f * phase - 1.0f));
-        float scale = picture.extent.height / SKIP_TEXT_CAPTURE_HEIGHT * pulse;
+        float scale = picture.extent.height / SKIP_TEXT_CAPTURE_HEIGHT * SIZE * pulse;
         float width = text.width * scale, height = text.height * scale;
         float x = picture.offset.x + picture.extent.width * text.centerX - width * 0.5f;
-        float y = picture.offset.y + picture.extent.height * text.centerY - height * 0.5f;
+        float y = picture.offset.y + picture.extent.height * CENTER_Y - height * 0.5f;
         VkRect2D area{ { int32_t(x), int32_t(y) }, { uint32_t(width) + 1, uint32_t(height) + 1 } };
 
         VkRenderingAttachmentInfo color{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };

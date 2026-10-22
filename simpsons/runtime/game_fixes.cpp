@@ -57,6 +57,10 @@ namespace
 // with an empty text. Such a message now waits until its string can be found.
 PPC_FUNC(sub_828B3E30)
 {
+    // SIMPSONS_SANS_BULLES=1 (tools/texte_video.sh): no event message, for a capture of the scene without its cloud
+    static const bool noClouds = getenv("SIMPSONS_SANS_BULLES") != nullptr;
+    if (noClouds)
+        return;
     if (LoadBE32(STRING_MANAGER) != 0 && !StringLoaded(ctx, base, ctx.r4.u32))
     {
         g_pending = { ctx.r3.u32, ctx.r4.u32, 0, ctx.f1.f64 };

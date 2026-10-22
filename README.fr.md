@@ -54,9 +54,9 @@ Les seuils des cartes dédiées n'ont pas encore été vérifiés sur un vrai PC
 - **Manette** : une manette Xbox (filaire ou Bluetooth) ou compatible XInput fonctionne directement.
 - **Clavier** : flèches ou ZQSD pour se déplacer, Entrée = START, Espace = A, E = B, R = X, F = Y.
 - **Plein écran** : le jeu démarre en plein écran ; Cmd+F (Mac), Alt+Entrée ou F11 pour passer en fenêtre.
-- **Vidéos** : Échap ou le bouton BACK de la manette (Select, Affichage, « − ») passe la vidéo en cours (pendant ses 10 premières
-  secondes, un message le rappelle comme le « Appuyez sur START. » de l'écran titre : même aspect, même place, même
-  rebond ; fait par tools/texte_video.sh).
+- **Vidéos** : Échap ou le bouton BACK de la manette (Select, Affichage, « − ») passe la vidéo en cours (pendant ses 7 premières
+  secondes, un message le rappelle comme le « Appuyez sur START. » de l'écran titre : même aspect et même rebond (plus
+  lent), un peu plus petit et plus bas ; fait par tools/texte_video.sh).
 - **Apple TV** : maintenir B pendant 2 secondes pour revenir à l'écran d'accueil.
 - Les niveaux tournent à 60 images/s (`SIMPSONS_30IPS=1` pour revenir aux 30 images/s d'origine), avec la physique
   Havok calculée à chaque image (pas de 1/60 s). Les menus, l'écran titre et les chargements restent à 30 images/s,
