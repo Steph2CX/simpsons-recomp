@@ -100,7 +100,13 @@ LANCER
 - Double-cliquer sur "lancer.sh" (ou dans un terminal : ./lancer.sh).
   Il met le PC en mode d'energie "performance" le temps du jeu, si le systeme le permet.
 - Le jeu demarre en plein ecran. Alt+Entree ou F11 : plein ecran / fenetre.
-- Image plus fine mais plus lente : SIMPSONS_RESOLUTION=2 ./lancer.sh (1 = normal, 3 = 4K).
+- Videos : Echap ou le bouton Select de la manette pour passer la video.
+
+REGLAGES
+- Fichier "reglages.txt" dans ~/.local/share/les-simpson-le-jeu (cree au premier lancement).
+  Enlever le # devant une ligne pour l'activer, par exemple :
+      SIMPSONS_RESOLUTION=2     image plus fine mais plus lente (1 = normal, 3 = 4K)
+      SIMPSONS_IPS=120          120 images/s dans les niveaux (ecran 120 Hz ou plus)
 
 MANETTE
 - Une manette Xbox (filaire ou Bluetooth) fonctionne directement.

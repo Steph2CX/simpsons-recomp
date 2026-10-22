@@ -1227,12 +1227,13 @@ float4 main(float4 position : SV_Position) : SV_Target
                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
             g_skipTextUploaded[textIndex] = true;
         }
-        // Top left corner, discreet: 2.2 % of the picture's height (at most half its width), 3 % from its edges
-        float height = picture.extent.height * 0.022f;
+        // Top left corner, two lines: 7 % of the picture's height, at least 50 pixels (720p window), at most 60 % of
+        // its width, 3 % from its edges
+        float height = std::max(picture.extent.height * 0.07f, 50.0f);
         float width = height * text.width / text.height;
-        if (width > picture.extent.width * 0.5f)
+        if (width > picture.extent.width * 0.6f)
         {
-            width = picture.extent.width * 0.5f;
+            width = picture.extent.width * 0.6f;
             height = width * text.height / text.width;
         }
         float x = picture.offset.x + picture.extent.height * 0.03f;

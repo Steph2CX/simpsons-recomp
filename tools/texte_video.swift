@@ -6,13 +6,14 @@
 import AppKit
 import CoreText
 
-// Language folder of the movies (movies\<language>\...), message; the first one is used for unknown languages
+// Language folder of the movies (movies\<language>\...), message on two lines; the first one is used for unknown
+// languages
 let messages: [(String, String)] = [
-    ("en", "Press Esc or Select to skip the video"),
-    ("fr", "Appuyez sur Échap ou sur Select pour passer la vidéo"),
-    ("es", "Pulsa Esc o Select para saltar el vídeo"),
-    ("it", "Premi Esc o Select per saltare il video"),
-    ("de", "Drücke Esc oder Select, um das Video zu überspringen"),
+    ("en", "Press Esc or Select\nto skip the video"),
+    ("fr", "Appuyez sur Échap ou sur Select\npour passer la vidéo"),
+    ("es", "Pulsa Esc o Select\npara saltar el vídeo"),
+    ("it", "Premi Esc o Select\nper saltare il video"),
+    ("de", "Drücke Esc oder Select,\num das Video zu überspringen"),
 ]
 let fontSize: CGFloat = 64
 let outline: CGFloat = 3 // outline thickness in pixels
@@ -34,23 +35,32 @@ func line(_ text: String, strokeWidth: CGFloat) -> CTLine {
     return CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
 }
 
-// One message: "{ language, width, height, runs }" for the header
+// One message: "{ language, width, height, runs }" for the header; lines left-aligned, one font line apart
 func encode(_ language: String, _ text: String) -> String {
-    let fill = line(text, strokeWidth: 0), stroke = line(text, strokeWidth: outline)
-    let bounds = CTLineGetBoundsWithOptions(stroke, .useGlyphPathBounds).insetBy(dx: -outline - 2, dy: -outline - 2)
-    let width = Int(bounds.width.rounded(.up)), height = Int(bounds.height.rounded(.up))
+    let rows = text.components(separatedBy: "\n")
+    let ascent = CTFontGetAscent(font), descent = CTFontGetDescent(font)
+    let lineHeight = (ascent + descent) * 1.05
+    let margin = outline + 2
+    var lineWidth: CGFloat = 0
+    for row in rows {
+        lineWidth = max(lineWidth, CTLineGetBoundsWithOptions(line(row, strokeWidth: outline), .useGlyphPathBounds).maxX)
+    }
+    let width = Int((lineWidth + 2 * margin).rounded(.up))
+    let height = Int((lineHeight * CGFloat(rows.count - 1) + ascent + descent + 2 * margin).rounded(.up))
 
-    func render(_ line: CTLine) -> [UInt8] {
+    func render(strokeWidth: CGFloat) -> [UInt8] {
         var pixels = [UInt8](repeating: 0, count: width * height)
         let context = CGContext(data: &pixels, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
                                 space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)!
-        context.translateBy(x: -bounds.minX, y: -bounds.minY)
-        context.textPosition = .zero
-        CTLineDraw(line, context)
+        for (i, row) in rows.enumerated() {
+            // Baselines from the top of the image (Core Graphics counts from the bottom)
+            context.textPosition = CGPoint(x: margin, y: CGFloat(height) - margin - ascent - lineHeight * CGFloat(i))
+            CTLineDraw(line(row, strokeWidth: strokeWidth), context)
+        }
         return pixels // first row = top of the image
     }
 
-    let letters = render(fill), border = render(stroke)
+    let letters = render(strokeWidth: 0), border = render(strokeWidth: outline)
     var packed = [UInt8]()
     for i in 0..<(width * height) {
         packed.append((letters[i] >> 4) << 4 | border[i] >> 4)
@@ -74,7 +84,7 @@ func encode(_ language: String, _ text: String) -> String {
         start = end
     }
     print("\(language): \(width)x\(height), \(runs.count / 2) runs, \(encoded.count) base64 characters")
-    return "    // \(text)\n    { \"\(language)\", \(width), \(height),\n\(lines.joined(separator: "\n")) },"
+    return "    // \(rows.joined(separator: " / "))\n    { \"\(language)\", \(width), \(height),\n\(lines.joined(separator: "\n")) },"
 }
 
 let entries = messages.map { encode($0.0, $0.1) }
