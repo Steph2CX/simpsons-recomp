@@ -188,4 +188,9 @@ plus récent (glibc 2.35), un processeur x86-64-v3 (Intel Haswell, AMD Ryzen) et
 - `portable/`, `tvos/`, `windows/`, `linux/` : construction pour chaque plateforme
 - `correctifs/` : modifications de XenonRecomp, XenosRecomp et DXC
 
+## Licence
+
+Le code de ce projet est sous licence GNU General Public License v3.0 (voir [LICENSE](LICENSE)). Elle ne couvre ni le
+jeu ni ses données : il faut votre propre exemplaire du disque.
+
 The Simpsons Game © Electronic Arts. Les Simpson © 20th Century Studios. Projet non officiel, sans lien avec eux.

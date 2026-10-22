@@ -187,5 +187,10 @@ with simulated key presses, and takes screenshots.
 - `portable/`, `tvos/`, `windows/`, `linux/`: per-platform builds
 - `correctifs/`: patches for XenonRecomp, XenosRecomp and DXC
 
+## License
+
+The code of this project is under the GNU General Public License v3.0 (see [LICENSE](LICENSE)). It covers neither
+the game nor its data: you need your own copy of the disc.
+
 The Simpsons Game © Electronic Arts. The Simpsons © 20th Century Studios. Unofficial project, not affiliated with
 them.
