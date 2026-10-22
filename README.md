@@ -160,6 +160,7 @@ game into `~/Jeux/Les Simpson - Le Jeu` with a shortcut in the applications menu
 | Variable | Effect |
 |---|---|
 | `SIMPSONS_RESOLUTION=1..4` | internal resolution (720p, 1440p, 4K, 5K) |
+| `SIMPSONS_FXAA=0` | no FXAA anti-aliasing at presentation (on by default) |
 | `SIMPSONS_30IPS=1` | 30 fps like the console |
 | `SIMPSONS_LOGOS=1` | logo movies at startup |
 | `SIMPSONS_FENETRE=1` | window instead of fullscreen (Mac) |

@@ -37,6 +37,7 @@
 #include <xxhash.h>
 
 #include "shader_translator_version.h" // SHADER_TRANSLATOR_VERSION
+#include "xenos/hlsl_compile.h"
 
 int PlatformGpuCoreCount(); // mac_window.mm
 bool RuntimeLowMemory(); // main.cpp
@@ -88,6 +89,7 @@ namespace
     VkExtent2D g_swapchainExtent{ TARGET_WIDTH, TARGET_HEIGHT };
     std::atomic<bool> g_swapchainOutdated{ false }; // window resized: recreated before the next frame
     std::vector<VkImage> g_swapchainImages;
+    std::vector<VkImageView> g_swapchainViews; // drawn into by the FXAA pass
 
     VkCommandPool g_commandPool = VK_NULL_HANDLE;
     // Two frames in flight: the next frame is recorded while the Mac's GPU draws the previous one. Each slot has
@@ -110,6 +112,15 @@ namespace
     VkCommandBuffer g_commandBuffer = VK_NULL_HANDLE; // current slot
     VkSemaphore g_imageAvailable = VK_NULL_HANDLE;
     std::vector<VkSemaphore> g_renderFinished;
+
+    // FXAA at presentation: the last copy of the frame is drawn into the window image through FXAA 3.11 instead of
+    // being blitted. SIMPSONS_FXAA=0 turns it off (plain blit, as before).
+    VkDescriptorSetLayout g_fxaaSetLayout = VK_NULL_HANDLE;
+    VkPipelineLayout g_fxaaLayout = VK_NULL_HANDLE;
+    VkPipeline g_fxaaPipeline = VK_NULL_HANDLE;
+    VkDescriptorPool g_fxaaPool = VK_NULL_HANDLE;
+    VkDescriptorSet g_fxaaSets[FRAMES_IN_FLIGHT]{}; // one per frame slot: rewritten once the slot's fence has passed
+    VkSampler g_fxaaSampler = VK_NULL_HANDLE;
     VkFence g_frameFence = VK_NULL_HANDLE;
 
     struct Image
@@ -136,7 +147,7 @@ namespace
     // Mac loads and stores only this area at each rendering pass, not the whole SURFACE_SIZE surface.
     uint32_t g_renderWidth = 1, g_renderHeight = 1;
 
-    bool PresentSource(VkImage* image, uint32_t* width, uint32_t* height, VkFormat* format); // resolved texture section
+    bool PresentSource(VkImage* image, VkImageView* view, uint32_t* width, uint32_t* height, VkFormat* format); // resolved texture section
 
     // Host format of an EDRAM colour surface (RB_COLOR_INFO format). The exact precision matters: some passes
     // pack flags in the low bits of a 2:10:10:10 target and decode them later.
@@ -387,6 +398,9 @@ namespace
         info.oldSwapchain = g_swapchain;
         VkSwapchainKHR swapchain;
         VK_CHECK(vkCreateSwapchainKHR(g_device, &info, nullptr, &swapchain));
+        for (VkImageView view : g_swapchainViews)
+            vkDestroyImageView(g_device, view, nullptr);
+        g_swapchainViews.clear();
         if (g_swapchain != VK_NULL_HANDLE)
             vkDestroySwapchainKHR(g_device, g_swapchain, nullptr);
         g_swapchain = swapchain;
@@ -395,6 +409,16 @@ namespace
         vkGetSwapchainImagesKHR(g_device, g_swapchain, &count, nullptr);
         g_swapchainImages.resize(count);
         vkGetSwapchainImagesKHR(g_device, g_swapchain, &count, g_swapchainImages.data());
+        g_swapchainViews.resize(count);
+        for (uint32_t i = 0; i < count; i++)
+        {
+            VkImageViewCreateInfo view{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+            view.image = g_swapchainImages[i];
+            view.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            view.format = g_swapchainFormat;
+            view.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+            VK_CHECK(vkCreateImageView(g_device, &view, nullptr, &g_swapchainViews[i]));
+        }
 
         for (VkSemaphore semaphore : g_renderFinished)
             vkDestroySemaphore(g_device, semaphore, nullptr);
@@ -576,6 +600,283 @@ namespace
             g_timestampPeriod = properties.limits.timestampPeriod;
         }
         return true;
+    }
+
+    // Whole-window triangle; the pixel shader works from SV_Position, so the y flip of DXC does not matter
+    const char* FXAA_VERTEX_SHADER = R"(
+float4 main(uint id : SV_VertexID) : SV_Position
+{
+    return float4(float(id & 1) * 4.0 - 1.0, float(id >> 1) * 4.0 - 1.0, 0.0, 1.0);
+}
+)";
+
+    // FXAA 3.11 (Timothy Lottes), quality preset 23, luma computed from the colour
+    const char* FXAA_PIXEL_SHADER = R"(
+struct Push
+{
+    float2 origin;   // top left corner of the picture in the window (pixels)
+    float2 rcpSize;  // 1 / picture size in the window
+    float2 rcpTexel; // 1 / source size
+};
+[[vk::push_constant]] Push g_push;
+[[vk::binding(0, 0)]] Texture2D<float4> g_source;
+[[vk::binding(1, 0)]] SamplerState g_sampler;
+
+static const float SUBPIX = 0.75;
+static const float EDGE_THRESHOLD = 0.166;
+static const float EDGE_THRESHOLD_MIN = 0.0833;
+static const uint STEPS = 6;
+static const float STEP_SIZES[STEPS] = { 1.0, 1.5, 2.0, 2.0, 2.0, 8.0 };
+
+float3 Fetch(float2 uv) { return g_source.SampleLevel(g_sampler, uv, 0.0).rgb; }
+float Luma(float3 color) { return dot(saturate(color), float3(0.299, 0.587, 0.114)); }
+float LumaAt(float2 uv) { return Luma(Fetch(uv)); }
+
+float4 main(float4 position : SV_Position) : SV_Target
+{
+    float2 uv = (position.xy - g_push.origin) * g_push.rcpSize;
+    float2 t = g_push.rcpTexel;
+    float3 rgbM = Fetch(uv);
+    float lumaM = Luma(rgbM);
+    float lumaS = LumaAt(uv + float2(0.0, t.y));
+    float lumaE = LumaAt(uv + float2(t.x, 0.0));
+    float lumaN = LumaAt(uv - float2(0.0, t.y));
+    float lumaW = LumaAt(uv - float2(t.x, 0.0));
+    float rangeMax = max(max(max(lumaS, lumaE), max(lumaN, lumaW)), lumaM);
+    float rangeMin = min(min(min(lumaS, lumaE), min(lumaN, lumaW)), lumaM);
+    float range = rangeMax - rangeMin;
+    if (range < max(EDGE_THRESHOLD_MIN, rangeMax * EDGE_THRESHOLD))
+        return float4(rgbM, 1.0);
+
+    float lumaNW = LumaAt(uv - t);
+    float lumaSE = LumaAt(uv + t);
+    float lumaNE = LumaAt(uv + float2(t.x, -t.y));
+    float lumaSW = LumaAt(uv + float2(-t.x, t.y));
+
+    // Edge direction
+    float lumaNS = lumaN + lumaS;
+    float lumaWE = lumaW + lumaE;
+    float edgeHorz1 = -2.0 * lumaM + lumaNS;
+    float edgeVert1 = -2.0 * lumaM + lumaWE;
+    float lumaNESE = lumaNE + lumaSE;
+    float lumaNWNE = lumaNW + lumaNE;
+    float edgeHorz2 = -2.0 * lumaE + lumaNESE;
+    float edgeVert2 = -2.0 * lumaN + lumaNWNE;
+    float lumaNWSW = lumaNW + lumaSW;
+    float lumaSWSE = lumaSW + lumaSE;
+    float edgeHorz = abs(-2.0 * lumaW + lumaNWSW) + abs(edgeHorz1) * 2.0 + abs(edgeHorz2);
+    float edgeVert = abs(-2.0 * lumaS + lumaSWSE) + abs(edgeVert1) * 2.0 + abs(edgeVert2);
+    bool horzSpan = edgeHorz >= edgeVert;
+    float lengthSign = horzSpan ? t.y : t.x;
+    if (!horzSpan)
+    {
+        lumaN = lumaW;
+        lumaS = lumaE;
+    }
+
+    // Sub-pixel aliasing amount
+    float subpixB = ((lumaNS + lumaWE) * 2.0 + lumaNWSW + lumaNESE) * (1.0 / 12.0) - lumaM;
+    float subpixC = saturate(abs(subpixB) / range);
+    float subpixF = (-2.0 * subpixC + 3.0) * subpixC * subpixC;
+
+    // Side of the edge with the steeper gradient
+    float gradientN = lumaN - lumaM;
+    float gradientS = lumaS - lumaM;
+    bool pairN = abs(gradientN) >= abs(gradientS);
+    float gradientScaled = max(abs(gradientN), abs(gradientS)) * 0.25;
+    if (pairN)
+        lengthSign = -lengthSign;
+    float lumaNN = (pairN ? lumaN : lumaS) + lumaM;
+
+    // Search both ends of the edge
+    float2 posB = uv;
+    if (horzSpan)
+        posB.y += lengthSign * 0.5;
+    else
+        posB.x += lengthSign * 0.5;
+    float2 offNP = horzSpan ? float2(t.x, 0.0) : float2(0.0, t.y);
+    float2 posN = posB - offNP * STEP_SIZES[0];
+    float2 posP = posB + offNP * STEP_SIZES[0];
+    float lumaEndN = LumaAt(posN) - lumaNN * 0.5;
+    float lumaEndP = LumaAt(posP) - lumaNN * 0.5;
+    bool doneN = abs(lumaEndN) >= gradientScaled;
+    bool doneP = abs(lumaEndP) >= gradientScaled;
+    for (uint i = 1; i < STEPS && !(doneN && doneP); i++)
+    {
+        if (!doneN)
+        {
+            posN -= offNP * STEP_SIZES[i];
+            lumaEndN = LumaAt(posN) - lumaNN * 0.5;
+            doneN = abs(lumaEndN) >= gradientScaled;
+        }
+        if (!doneP)
+        {
+            posP += offNP * STEP_SIZES[i];
+            lumaEndP = LumaAt(posP) - lumaNN * 0.5;
+            doneP = abs(lumaEndP) >= gradientScaled;
+        }
+    }
+
+    // Offset towards the nearer end, if the luma there crosses the edge in the right direction
+    float dstN = horzSpan ? uv.x - posN.x : uv.y - posN.y;
+    float dstP = horzSpan ? posP.x - uv.x : posP.y - uv.y;
+    bool lumaMLTZero = lumaM - lumaNN * 0.5 < 0.0;
+    bool goodSpan = dstN < dstP ? (lumaEndN < 0.0) != lumaMLTZero : (lumaEndP < 0.0) != lumaMLTZero;
+    float pixelOffset = goodSpan ? 0.5 - min(dstN, dstP) / (dstN + dstP) : 0.0;
+    float offset = max(pixelOffset, subpixF * subpixF * SUBPIX);
+    if (horzSpan)
+        uv.y += offset * lengthSign;
+    else
+        uv.x += offset * lengthSign;
+    return float4(Fetch(uv), 1.0);
+}
+)";
+
+    bool CreateFxaa()
+    {
+        std::vector<uint32_t> vertexCode = CompileHlslToSpirv(FXAA_VERTEX_SHADER, false);
+        std::vector<uint32_t> pixelCode = CompileHlslToSpirv(FXAA_PIXEL_SHADER, true);
+        if (vertexCode.empty() || pixelCode.empty())
+            return false;
+
+        VkSamplerCreateInfo samplerInfo{ VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+        samplerInfo.magFilter = VK_FILTER_LINEAR;
+        samplerInfo.minFilter = VK_FILTER_LINEAR;
+        samplerInfo.addressModeU = samplerInfo.addressModeV = samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        VK_CHECK(vkCreateSampler(g_device, &samplerInfo, nullptr, &g_fxaaSampler));
+
+        VkDescriptorSetLayoutBinding bindings[2] = { { 0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+            { 1, VK_DESCRIPTOR_TYPE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr } };
+        VkDescriptorSetLayoutCreateInfo setLayoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+        setLayoutInfo.bindingCount = 2;
+        setLayoutInfo.pBindings = bindings;
+        VK_CHECK(vkCreateDescriptorSetLayout(g_device, &setLayoutInfo, nullptr, &g_fxaaSetLayout));
+
+        VkDescriptorPoolSize poolSizes[2] = { { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, FRAMES_IN_FLIGHT },
+            { VK_DESCRIPTOR_TYPE_SAMPLER, FRAMES_IN_FLIGHT } };
+        VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+        poolInfo.maxSets = FRAMES_IN_FLIGHT;
+        poolInfo.poolSizeCount = 2;
+        poolInfo.pPoolSizes = poolSizes;
+        VK_CHECK(vkCreateDescriptorPool(g_device, &poolInfo, nullptr, &g_fxaaPool));
+        VkDescriptorSetLayout setLayouts[FRAMES_IN_FLIGHT];
+        std::fill(setLayouts, setLayouts + FRAMES_IN_FLIGHT, g_fxaaSetLayout);
+        VkDescriptorSetAllocateInfo setInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+        setInfo.descriptorPool = g_fxaaPool;
+        setInfo.descriptorSetCount = FRAMES_IN_FLIGHT;
+        setInfo.pSetLayouts = setLayouts;
+        VK_CHECK(vkAllocateDescriptorSets(g_device, &setInfo, g_fxaaSets));
+
+        VkPushConstantRange pushRange{ VK_SHADER_STAGE_FRAGMENT_BIT, 0, 24 };
+        VkPipelineLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+        layoutInfo.setLayoutCount = 1;
+        layoutInfo.pSetLayouts = &g_fxaaSetLayout;
+        layoutInfo.pushConstantRangeCount = 1;
+        layoutInfo.pPushConstantRanges = &pushRange;
+        VK_CHECK(vkCreatePipelineLayout(g_device, &layoutInfo, nullptr, &g_fxaaLayout));
+
+        VkShaderModule modules[2] = {};
+        const std::vector<uint32_t>* codes[2] = { &vertexCode, &pixelCode };
+        for (uint32_t i = 0; i < 2; i++)
+        {
+            VkShaderModuleCreateInfo moduleInfo{ VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
+            moduleInfo.codeSize = codes[i]->size() * 4;
+            moduleInfo.pCode = codes[i]->data();
+            VK_CHECK(vkCreateShaderModule(g_device, &moduleInfo, nullptr, &modules[i]));
+        }
+        VkPipelineShaderStageCreateInfo stages[2] = { { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO },
+            { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO } };
+        stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        stages[0].module = modules[0];
+        stages[0].pName = "main";
+        stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        stages[1].module = modules[1];
+        stages[1].pName = "main";
+        VkPipelineVertexInputStateCreateInfo vertexInput{ VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
+        VkPipelineInputAssemblyStateCreateInfo inputAssembly{ VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
+        inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        VkPipelineViewportStateCreateInfo viewportState{ VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
+        viewportState.viewportCount = 1;
+        viewportState.scissorCount = 1;
+        VkPipelineRasterizationStateCreateInfo raster{ VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
+        raster.polygonMode = VK_POLYGON_MODE_FILL;
+        raster.cullMode = VK_CULL_MODE_NONE;
+        raster.lineWidth = 1.0f;
+        VkPipelineMultisampleStateCreateInfo multisample{ VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
+        multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        VkPipelineColorBlendAttachmentState blend{};
+        blend.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        VkPipelineColorBlendStateCreateInfo colorBlend{ VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
+        colorBlend.attachmentCount = 1;
+        colorBlend.pAttachments = &blend;
+        VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+        VkPipelineDynamicStateCreateInfo dynamic{ VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+        dynamic.dynamicStateCount = 2;
+        dynamic.pDynamicStates = dynamicStates;
+        VkPipelineRenderingCreateInfo rendering{ VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
+        rendering.colorAttachmentCount = 1;
+        rendering.pColorAttachmentFormats = &g_swapchainFormat;
+
+        VkGraphicsPipelineCreateInfo info{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+        info.pNext = &rendering;
+        info.stageCount = 2;
+        info.pStages = stages;
+        info.pVertexInputState = &vertexInput;
+        info.pInputAssemblyState = &inputAssembly;
+        info.pViewportState = &viewportState;
+        info.pRasterizationState = &raster;
+        info.pMultisampleState = &multisample;
+        info.pColorBlendState = &colorBlend;
+        info.pDynamicState = &dynamic;
+        info.layout = g_fxaaLayout;
+        VkResult created = vkCreateGraphicsPipelines(g_device, VK_NULL_HANDLE, 1, &info, nullptr, &g_fxaaPipeline);
+        for (VkShaderModule module : modules)
+            vkDestroyShaderModule(g_device, module, nullptr);
+        VK_CHECK(created);
+        return true;
+    }
+
+    // Draws the source (in GENERAL layout) into the swapchain image (COLOR_ATTACHMENT_OPTIMAL) through FXAA, over
+    // the rectangle of the picture
+    void DrawFxaa(VkImageView source, uint32_t sourceWidth, uint32_t sourceHeight, uint32_t imageIndex, VkRect2D picture)
+    {
+        VkDescriptorSet set = g_fxaaSets[g_frameSlot];
+        VkDescriptorImageInfo images[2] = { { VK_NULL_HANDLE, source, VK_IMAGE_LAYOUT_GENERAL },
+            { g_fxaaSampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED } };
+        VkWriteDescriptorSet writes[2];
+        for (uint32_t i = 0; i < 2; i++)
+        {
+            writes[i] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+            writes[i].dstSet = set;
+            writes[i].dstBinding = i;
+            writes[i].descriptorCount = 1;
+            writes[i].descriptorType = i == 0 ? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE : VK_DESCRIPTOR_TYPE_SAMPLER;
+            writes[i].pImageInfo = &images[i];
+        }
+        vkUpdateDescriptorSets(g_device, 2, writes, 0, nullptr);
+
+        VkRenderingAttachmentInfo color{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+        color.imageView = g_swapchainViews[imageIndex];
+        color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        color.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // black bars cleared before
+        color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        VkRenderingInfo rendering{ VK_STRUCTURE_TYPE_RENDERING_INFO };
+        rendering.renderArea = picture;
+        rendering.layerCount = 1;
+        rendering.colorAttachmentCount = 1;
+        rendering.pColorAttachments = &color;
+        vkCmdBeginRendering(g_commandBuffer, &rendering);
+        vkCmdBindPipeline(g_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, g_fxaaPipeline);
+        VkViewport viewport{ float(picture.offset.x), float(picture.offset.y), float(picture.extent.width), float(picture.extent.height),
+            0.0f, 1.0f };
+        vkCmdSetViewport(g_commandBuffer, 0, 1, &viewport);
+        vkCmdSetScissor(g_commandBuffer, 0, 1, &picture);
+        vkCmdBindDescriptorSets(g_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, g_fxaaLayout, 0, 1, &set, 0, nullptr);
+        float push[6] = { float(picture.offset.x), float(picture.offset.y), 1.0f / picture.extent.width, 1.0f / picture.extent.height,
+            1.0f / sourceWidth, 1.0f / sourceHeight };
+        vkCmdPushConstants(g_commandBuffer, g_fxaaLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), push);
+        vkCmdDraw(g_commandBuffer, 3, 1, 0, 0);
+        vkCmdEndRendering(g_commandBuffer);
     }
 
     bool CreateResources()
@@ -1230,6 +1531,12 @@ bool RendererInit()
 #endif
     if (!CreateDevice() || !CreateSwapchain() || !CreateResources())
         return false;
+    bool fxaa = !(getenv("SIMPSONS_FXAA") && atoi(getenv("SIMPSONS_FXAA")) == 0);
+    if (fxaa && !CreateFxaa())
+    {
+        fprintf(stderr, "[rendu] FXAA indisponible, affichage sans\n");
+        g_fxaaPipeline = VK_NULL_HANDLE;
+    }
 
     g_running = true;
     fprintf(stderr, "[rendu] fenetre %ux%u prete\n", g_swapchainExtent.width, g_swapchainExtent.height);
@@ -1664,9 +1971,12 @@ void RendererPresent(uint64_t frame)
     // Front buffer (last colour copy of the frame, or the current surface) -> window (scaled)
     VkImage image = g_swapchainImages[imageIndex];
     VkImage source = VK_NULL_HANDLE;
+    VkImageView sourceView = VK_NULL_HANDLE;
     uint32_t sourceWidth = 0, sourceHeight = 0;
     VkFormat sourceFormat = TARGET_FORMAT;
-    bool resolved = PresentSource(&source, &sourceWidth, &sourceHeight, &sourceFormat);
+    bool resolved = PresentSource(&source, &sourceView, &sourceWidth, &sourceHeight, &sourceFormat);
+    // FXAA only from a copy: the EDRAM surfaces cannot be sampled
+    bool fxaa = resolved && g_fxaaPipeline != VK_NULL_HANDLE;
     if (!resolved)
     {
         if (g_color == nullptr)
@@ -1680,7 +1990,7 @@ void RendererPresent(uint64_t frame)
     else
         ImageBarrier(source, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT);
     ImageBarrier(image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
     VkImageBlit blit{};
@@ -1697,9 +2007,19 @@ void RendererPresent(uint64_t frame)
     else
         outHeight = uint32_t(uint64_t(outWidth) * sourceHeight / std::max(sourceWidth, 1u));
     int32_t left = int32_t(g_swapchainExtent.width - outWidth) / 2, top = int32_t(g_swapchainExtent.height - outHeight) / 2;
-    blit.dstOffsets[0] = { left, top, 0 };
-    blit.dstOffsets[1] = { left + int32_t(outWidth), top + int32_t(outHeight), 1 };
-    vkCmdBlitImage(g_commandBuffer, source, VK_IMAGE_LAYOUT_GENERAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+    if (fxaa)
+    {
+        ImageBarrier(image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+        DrawFxaa(sourceView, sourceWidth, sourceHeight, imageIndex, { { left, top }, { outWidth, outHeight } });
+    }
+    else
+    {
+        blit.dstOffsets[0] = { left, top, 0 };
+        blit.dstOffsets[1] = { left + int32_t(outWidth), top + int32_t(outHeight), 1 };
+        vkCmdBlitImage(g_commandBuffer, source, VK_IMAGE_LAYOUT_GENERAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+    }
 
     // SIMPSONS_CAPTURE=<frame>,...: copy the presented image to the end of the upload ring
     bool capture = false;
@@ -1719,11 +2039,16 @@ void RendererPresent(uint64_t frame)
     }
     if (resolved)
         ImageBarrier(source, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
     else
         SurfaceBarrier(source, VK_IMAGE_ASPECT_COLOR_BIT);
-    ImageBarrier(image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0);
+    if (fxaa)
+        ImageBarrier(image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0);
+    else
+        ImageBarrier(image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0);
     bool tracedPasses = TracingPasses() && !g_passNames.empty();
     if (tracedPasses)
     {
@@ -2201,12 +2526,13 @@ void RendererResolve(uint32_t address, uint32_t width, uint32_t height, uint32_t
 
 namespace
 {
-    bool PresentSource(VkImage* image, uint32_t* width, uint32_t* height, VkFormat* format)
+    bool PresentSource(VkImage* image, VkImageView* view, uint32_t* width, uint32_t* height, VkFormat* format)
     {
         auto it = g_resolved.find(g_lastResolveAddress);
         if (it == g_resolved.end())
             return false;
         *image = it->second.image.image;
+        *view = it->second.image.view;
         *format = it->second.format;
         *width = it->second.width;
         *height = it->second.height;

@@ -28,6 +28,7 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/shader_common_header.cpp"
 
 add_library(XenosTranslate STATIC
     xenos/xenos_translate.cpp
+    xenos/hlsl_compile.cpp
     "${XENOS_RECOMP_ROOT}/XenosRecomp/shader_recompiler.cpp"
     "${XENOS_RECOMP_ROOT}/XenosRecomp/dxc_compiler.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/shader_common_header.cpp")

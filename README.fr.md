@@ -161,6 +161,7 @@ plus récent (glibc 2.35), un processeur x86-64-v3 (Intel Haswell, AMD Ryzen) et
 | Variable | Effet |
 |---|---|
 | `SIMPSONS_RESOLUTION=1..4` | résolution interne (720p, 1440p, 4K, 5K) |
+| `SIMPSONS_FXAA=0` | sans anticrénelage FXAA à l'affichage (activé par défaut) |
 | `SIMPSONS_30IPS=1` | 30 images/s comme sur la console |
 | `SIMPSONS_LOGOS=1` | vidéos des logos au démarrage |
 | `SIMPSONS_FENETRE=1` | fenêtre au lieu du plein écran (Mac) |
