@@ -125,7 +125,7 @@ namespace
     VkDescriptorSet g_fxaaSets[FRAMES_IN_FLIGHT]{}; // one per frame slot: rewritten once the slot's fence has passed
     VkSampler g_fxaaSampler = VK_NULL_HANDLE;
     bool g_fxaaEnabled = true;
-    // "Appuyez sur Échap pour passer la vidéo" at the top of the picture during movies (texte_video.h, files.cpp);
+    // "Appuyez sur Échap ou sur Select pour passer la vidéo" in the top left corner of the picture during movies (texte_video.h, files.cpp);
     // drawn with the FXAA pass's layout and vertex shader
     VkPipeline g_skipTextPipeline = VK_NULL_HANDLE;
     VkDescriptorSet g_skipTextSet = VK_NULL_HANDLE;
@@ -1182,7 +1182,7 @@ float4 main(float4 position : SV_Position) : SV_Target
         return float(std::clamp(std::min(seconds / FADE, (SHOWN - seconds) / FADE), 0.0, 1.0));
     }
 
-    // Draws the message at the top of the picture, into the swapchain image (COLOR_ATTACHMENT_OPTIMAL)
+    // Draws the message in the top left corner of the picture, into the swapchain image (COLOR_ATTACHMENT_OPTIMAL)
     void DrawSkipText(uint32_t imageIndex, VkRect2D picture, float alpha)
     {
         if (!g_skipTextUploaded)
@@ -1203,16 +1203,16 @@ float4 main(float4 position : SV_Position) : SV_Target
                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
             g_skipTextUploaded = true;
         }
-        // 3 % of the picture's height, at most 90 % of its width, centred 4 % below its top
-        float height = picture.extent.height * 0.03f;
+        // Top left corner, discreet: 2.2 % of the picture's height (at most half its width), 3 % from its edges
+        float height = picture.extent.height * 0.022f;
         float width = height * SKIP_TEXT_WIDTH / SKIP_TEXT_HEIGHT;
-        if (width > picture.extent.width * 0.9f)
+        if (width > picture.extent.width * 0.5f)
         {
-            width = picture.extent.width * 0.9f;
+            width = picture.extent.width * 0.5f;
             height = width * SKIP_TEXT_HEIGHT / SKIP_TEXT_WIDTH;
         }
-        float x = picture.offset.x + (picture.extent.width - width) * 0.5f;
-        float y = picture.offset.y + picture.extent.height * 0.04f;
+        float x = picture.offset.x + picture.extent.height * 0.03f;
+        float y = picture.offset.y + picture.extent.height * 0.03f;
         VkRect2D area{ { int32_t(x), int32_t(y) }, { uint32_t(width) + 1, uint32_t(height) + 1 } };
 
         VkRenderingAttachmentInfo color{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
@@ -1231,7 +1231,7 @@ float4 main(float4 position : SV_Position) : SV_Target
         vkCmdSetViewport(g_commandBuffer, 0, 1, &viewport);
         vkCmdSetScissor(g_commandBuffer, 0, 1, &area);
         vkCmdBindDescriptorSets(g_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, g_fxaaLayout, 0, 1, &g_skipTextSet, 0, nullptr);
-        float push[5] = { x, y, 1.0f / width, 1.0f / height, alpha };
+        float push[5] = { x, y, 1.0f / width, 1.0f / height, alpha * 0.85f };
         vkCmdPushConstants(g_commandBuffer, g_fxaaLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), push);
         vkCmdDraw(g_commandBuffer, 3, 1, 0, 0);
         vkCmdEndRendering(g_commandBuffer);
@@ -2204,7 +2204,7 @@ void RendererPresent(uint64_t frame)
         blit.dstOffsets[1] = { left + int32_t(outWidth), top + int32_t(outHeight), 1 };
         vkCmdBlitImage(g_commandBuffer, source, VK_IMAGE_LAYOUT_GENERAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
     }
-    // During movies: "Appuyez sur Échap pour passer la vidéo" at the top
+    // During movies: "Appuyez sur Échap ou sur Select pour passer la vidéo" in the top left corner
     float skipTextAlpha = g_skipTextPipeline != VK_NULL_HANDLE ? SkipTextAlpha() : 0.0f;
     bool skipText = skipTextAlpha > 0.0f;
     if (skipText)

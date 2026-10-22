@@ -95,6 +95,9 @@ void InputHandleEvent(const SDL_Event& event)
             SDL_IsGamepad(event.jdevice.which) ? "oui" : "non");
     else if (event.type == SDL_EVENT_JOYSTICK_REMOVED)
         fprintf(stderr, "[manette] appareil retire\n");
+    // BACK (Select, View, "-"): skips the movie playing, like Escape (files.cpp)
+    if (event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && event.gbutton.button == SDL_GAMEPAD_BUTTON_BACK)
+        FilesSkipMovies();
     if (event.type == SDL_EVENT_GAMEPAD_ADDED)
     {
         for (uint32_t player = 0; player < MAX_PLAYERS; player++)

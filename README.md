@@ -53,7 +53,8 @@ forces another resolution; if the game stutters, go one step lower.
 - **Controller**: an Xbox controller (wired or Bluetooth) or any XInput-compatible controller works out of the box.
 - **Keyboard**: arrow keys or WASD (ZQSD on AZERTY) to move, Enter = START, Space = A, E = B, R = X, F = Y.
 - **Fullscreen**: the game starts fullscreen; Cmd+F (Mac), Alt+Enter or F11 to switch to a window.
-- **Movies**: Escape skips the movie playing (a message at the top of the screen says so during its first seconds).
+- **Movies**: Escape or the gamepad's BACK button (Select, View, "−") skips the movie playing (a message in the top left
+  corner says so during its first seconds).
 - **Apple TV**: hold B for 2 seconds to return to the home screen.
 - Levels run at 60 fps (`SIMPSONS_30IPS=1` restores the original 30 fps), with Havok physics stepping every frame
   (1/60 s steps). Menus, the title screen and loading screens stay at 30 fps, as they were made for: their logic
