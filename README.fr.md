@@ -55,7 +55,9 @@ Les seuils des cartes dédiées n'ont pas encore été vérifiés sur un vrai PC
 - **Clavier** : flèches ou ZQSD pour se déplacer, Entrée = START, Espace = A, E = B, R = X, F = Y.
 - **Plein écran** : le jeu démarre en plein écran ; Cmd+F (Mac), Alt+Entrée ou F11 pour passer en fenêtre.
 - **Apple TV** : maintenir B pendant 2 secondes pour revenir à l'écran d'accueil.
-- Le jeu tourne à 60 images/s (`SIMPSONS_30IPS=1` pour revenir aux 30 images/s d'origine).
+- Les niveaux tournent à 60 images/s (`SIMPSONS_30IPS=1` pour revenir aux 30 images/s d'origine), avec la physique
+  Havok calculée à chaque image (pas de 1/60 s). Les menus, l'écran titre et les chargements restent à 30 images/s,
+  comme prévu par le jeu : leur logique compte en images.
 
 | Plateforme | Sauvegardes et journal (`jeu.log`) |
 |---|---|
@@ -163,6 +165,9 @@ plus récent (glibc 2.35), un processeur x86-64-v3 (Intel Haswell, AMD Ryzen) et
 | `SIMPSONS_RESOLUTION=1..4` | résolution interne (720p, 1440p, 4K, 5K) |
 | `SIMPSONS_FXAA=0` | sans anticrénelage FXAA à l'affichage (activé par défaut) |
 | `SIMPSONS_30IPS=1` | 30 images/s comme sur la console |
+| `SIMPSONS_MENUS_60=1` | menus et écran titre à 60 images/s aussi (ils vont alors deux fois trop vite) |
+| `SIMPSONS_PHYSIQUE_ORIGINALE=1` | physique Havok d'origine (30 pas par seconde à 60 images/s) |
+| `SIMPSONS_TRACE_PHYSIQUE=1` | pas de physique par image, toutes les 5 s |
 | `SIMPSONS_LOGOS=1` | vidéos des logos au démarrage |
 | `SIMPSONS_FENETRE=1` | fenêtre au lieu du plein écran (Mac) |
 | `SIMPSONS_CONSOLE=1` | journal sur la sortie d'erreur au lieu de `jeu.log` |

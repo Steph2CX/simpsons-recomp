@@ -54,7 +54,9 @@ forces another resolution; if the game stutters, go one step lower.
 - **Keyboard**: arrow keys or WASD (ZQSD on AZERTY) to move, Enter = START, Space = A, E = B, R = X, F = Y.
 - **Fullscreen**: the game starts fullscreen; Cmd+F (Mac), Alt+Enter or F11 to switch to a window.
 - **Apple TV**: hold B for 2 seconds to return to the home screen.
-- The game runs at 60 fps (`SIMPSONS_30IPS=1` restores the original 30 fps).
+- Levels run at 60 fps (`SIMPSONS_30IPS=1` restores the original 30 fps), with Havok physics stepping every frame
+  (1/60 s steps). Menus, the title screen and loading screens stay at 30 fps, as they were made for: their logic
+  counts frames.
 
 | Platform | Saves and log (`jeu.log`) |
 |---|---|
@@ -162,6 +164,9 @@ game into `~/Jeux/Les Simpson - Le Jeu` with a shortcut in the applications menu
 | `SIMPSONS_RESOLUTION=1..4` | internal resolution (720p, 1440p, 4K, 5K) |
 | `SIMPSONS_FXAA=0` | no FXAA anti-aliasing at presentation (on by default) |
 | `SIMPSONS_30IPS=1` | 30 fps like the console |
+| `SIMPSONS_MENUS_60=1` | menus and title screen at 60 fps too (they then run twice as fast) |
+| `SIMPSONS_PHYSIQUE_ORIGINALE=1` | Havok physics as shipped (30 steps per second at 60 fps) |
+| `SIMPSONS_TRACE_PHYSIQUE=1` | physics steps per frame every 5 s |
 | `SIMPSONS_LOGOS=1` | logo movies at startup |
 | `SIMPSONS_FENETRE=1` | window instead of fullscreen (Mac) |
 | `SIMPSONS_CONSOLE=1` | log to standard error instead of `jeu.log` |

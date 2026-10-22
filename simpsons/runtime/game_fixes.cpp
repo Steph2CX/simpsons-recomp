@@ -1,7 +1,13 @@
 // Fixes to the game's own behaviour (hooks on guest functions).
 #include "runtime.h"
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 PPC_FUNC_IMPL(__imp__sub_828B3E30); // HUD: show an event message (r3 = HUD panel, r4 = string id, f1 = duration)
 PPC_FUNC_IMPL(__imp__sub_828B2B70); // HUD: per-frame update of a player's thought bubble
@@ -71,4 +77,108 @@ PPC_FUNC(sub_828B2B70)
         g_pending.id = 0;
         ShowMessage(ctx, base, message);
     }
+}
+
+// Havok physics step at 60 images/s. sub_827A55C0 moves the world's time marker on by f1 (the game clock's frame
+// time smoothed by sub_827A66B8), then: f1 <= T (0x82159238, 1/29.97 s as shipped) -> one step of T while the
+// simulation is behind the marker; f1 < H (static from 0x82159240, 4/59.94 s) -> steps of f1 / 2; else steps of
+// 1/59.94 s. At 60 images/s that is one 33.4 ms step every other frame: physics objects moved at 30 Hz. Now
+// T = 1/59.94 s and the step gets the clock's own frame time (whole vblanks x time scale, 0x82CED748) instead of the
+// smoothed copy, which settles a few ulps off it: one 16.7 ms step per vblank, at 60 and at 30 images/s (the
+// console's usual step). While the time scale is 0 the game's own path runs. SIMPSONS_PHYSIQUE_ORIGINALE=1: as
+// shipped. SIMPSONS_TRACE_PHYSIQUE=1: steps per frame every 5 s.
+PPC_FUNC_IMPL(__imp__sub_827A55C0); // Havok world step (r3 = owner, f1 = frame time)
+PPC_FUNC_IMPL(__imp__sub_82AA2070); // hkWorld::stepDeltaTime (f1 = step)
+
+std::atomic<int64_t> g_lastPhysicsStepNs{ 0 }; // read by gpu.cpp: a level is running
+
+namespace
+{
+    constexpr uint32_t STEP_THRESHOLD = 0x82159238;          // T, read only by sub_827A55C0
+    constexpr uint32_t STEP_THRESHOLD_SHIPPED = 0x3D08AB86;  // 1/29.97 s
+    constexpr uint32_t STEP_VBLANK = 0x3C88AB86;             // 1/59.94 s
+    constexpr uint32_t CLOCK_FRAME_DT = 0x82CED748;
+
+    bool g_tracePhysics = false;
+    bool g_inStep = false; // steps counted only from sub_827A55C0
+    uint32_t g_frameSteps = 0;
+    struct PhysicsStats
+    {
+        int64_t sinceNs = 0;
+        uint32_t frames = 0, steps = 0, stepsPerFrame[4] = {};
+        float minStep = 0, maxStep = 0;
+    } g_physicsStats;
+
+    int64_t NowNs()
+    {
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
+    float LoadBEFloat(uint32_t address)
+    {
+        uint32_t bits = LoadBE32(address);
+        float value;
+        memcpy(&value, &bits, 4);
+        return value;
+    }
+}
+
+PPC_FUNC(sub_827A55C0)
+{
+    int64_t now = NowNs();
+    g_lastPhysicsStepNs.store(now, std::memory_order_relaxed);
+    static const bool steady = getenv("SIMPSONS_PHYSIQUE_ORIGINALE") == nullptr;
+    static const bool trace = (g_tracePhysics = getenv("SIMPSONS_TRACE_PHYSIQUE") != nullptr);
+    (void)trace;
+    if (steady)
+    {
+        static bool patched = false;
+        if (!patched)
+        {
+            patched = true;
+            if (LoadBE32(STEP_THRESHOLD) == STEP_THRESHOLD_SHIPPED)
+                StoreBE32(STEP_THRESHOLD, STEP_VBLANK);
+            else
+                fprintf(stderr, "[physique] seuil inattendu %08X : physique d'origine\n", LoadBE32(STEP_THRESHOLD));
+        }
+        float frameDt = LoadBEFloat(CLOCK_FRAME_DT);
+        if (LoadBE32(STEP_THRESHOLD) == STEP_VBLANK && frameDt > 0.0f && std::isfinite(frameDt))
+            ctx.f1.f64 = frameDt;
+    }
+    if (!g_tracePhysics)
+    {
+        __imp__sub_827A55C0(ctx, base);
+        return;
+    }
+    g_frameSteps = 0;
+    g_inStep = true;
+    __imp__sub_827A55C0(ctx, base);
+    g_inStep = false;
+    PhysicsStats& s = g_physicsStats;
+    if (s.sinceNs == 0 || now - s.sinceNs > 10'000'000'000ll)
+        s = { now };
+    s.frames++;
+    s.stepsPerFrame[std::min(g_frameSteps, 3u)]++;
+    if (now - s.sinceNs >= 5'000'000'000ll)
+    {
+        double seconds = (now - s.sinceNs) * 1e-9;
+        fprintf(stderr, "[physique] %.1f s : %u images (%.1f/s), %u pas (%.1f/s) de %.2f a %.2f ms, pas par image 0:%u 1:%u 2:%u 3+:%u\n",
+            seconds, s.frames, s.frames / seconds, s.steps, s.steps / seconds, s.minStep * 1000, s.maxStep * 1000,
+            s.stepsPerFrame[0], s.stepsPerFrame[1], s.stepsPerFrame[2], s.stepsPerFrame[3]);
+        s = { now };
+    }
+}
+
+PPC_FUNC(sub_82AA2070)
+{
+    if (g_inStep)
+    {
+        float step = float(ctx.f1.f64);
+        PhysicsStats& s = g_physicsStats;
+        s.minStep = s.steps ? std::min(s.minStep, step) : step;
+        s.maxStep = s.steps ? std::max(s.maxStep, step) : step;
+        s.steps++;
+        g_frameSteps++;
+    }
+    __imp__sub_82AA2070(ctx, base);
 }
