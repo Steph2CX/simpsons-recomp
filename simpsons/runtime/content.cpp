@@ -284,7 +284,7 @@ KERNEL_FUNC(XamContentCreateEx)
             disposition = 2; // opened
         FilesMount(root, folder);
     }
-    fprintf(stderr, "[contenu] %s: -> %s (mode %u) : %s\n", root.c_str(), folder.c_str(), mode,
+    fprintf(stderr, "[contenu] %s: -> %s (mode %u) : %s\n", root.c_str(), folder.string().c_str(), mode,
         result == ERROR_SUCCESS ? (disposition == 1 ? "cree" : "ouvert") : "erreur");
     if (ctx.r7.u32 != 0)
         StoreBE32(ctx.r7.u32, disposition);
