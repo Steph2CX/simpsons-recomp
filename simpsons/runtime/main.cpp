@@ -548,6 +548,52 @@ static void StartQuitTimer()
         }).detach();
 }
 
+// Settings: reglages.txt in the working directory (the folder of the saves and of jeu.log), one SIMPSONS_...=value per
+// line, # for a comment. A variable already set in the environment wins. Created as a commented template if missing.
+static void ApplySettingsFile()
+{
+    const char* path = "reglages.txt";
+    FILE* file = fopen(path, "rb");
+    if (file == nullptr)
+    {
+        if (FILE* out = fopen(path, "wb"))
+        {
+            fputs("# Reglages du jeu / game settings : une variable par ligne, enlever le # pour l'activer\n"
+                  "# (README : https://github.com/Steph2CX/simpsons-recomp)\n"
+                  "#SIMPSONS_RESOLUTION=2\n"
+                  "#SIMPSONS_IPS=120\n"
+                  "#SIMPSONS_FXAA=0\n"
+                  "#SIMPSONS_30IPS=1\n", out);
+            fclose(out);
+        }
+        return;
+    }
+    char line[512];
+    bool first = true;
+    while (fgets(line, sizeof(line), file))
+    {
+        std::string text = line;
+        if (first && text.rfind("\xEF\xBB\xBF", 0) == 0) // UTF-8 mark written by Notepad
+            text.erase(0, 3);
+        first = false;
+        while (!text.empty() && (text.back() == '\n' || text.back() == '\r' || text.back() == ' ' || text.back() == '\t'))
+            text.pop_back();
+        size_t equal = text.find('=');
+        if (text.rfind("SIMPSONS_", 0) != 0 || equal == std::string::npos)
+            continue;
+        std::string name = text.substr(0, equal), value = text.substr(equal + 1);
+        if (name.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") != std::string::npos || getenv(name.c_str()) != nullptr)
+            continue;
+#ifdef _WIN32
+        _putenv_s(name.c_str(), value.c_str());
+#else
+        setenv(name.c_str(), value.c_str(), 0);
+#endif
+        fprintf(stderr, "[reglages] %s=%s\n", name.c_str(), value.c_str());
+    }
+    fclose(file);
+}
+
 int main(int argc, char** argv)
 {
     StartQuitTimer();
@@ -627,6 +673,7 @@ int main(int argc, char** argv)
     setvbuf(stderr, nullptr, _IOLBF, 0);
     const char* xexPath = argc > 1 ? argv[1] : defaultXex.c_str();
 #endif
+    ApplySettingsFile();
     auto xex = LoadFile(xexPath);
     if (xex.empty())
     {

@@ -12,6 +12,13 @@ LANCER
 - La premiere fois, Windows peut afficher "Windows a protege votre ordinateur" :
   cliquer sur "Informations complementaires", puis sur "Executer quand meme".
 - Le jeu demarre en plein ecran. Alt+Entree ou F11 : plein ecran / fenetre.
+- Videos : Echap ou le bouton Select/Affichage de la manette pour passer la video.
+
+REGLAGES
+- Fichier "reglages.txt" dans %LOCALAPPDATA%\Les Simpson - Le Jeu (cree au premier lancement).
+  L'ouvrir avec le Bloc-notes et enlever le # devant une ligne pour l'activer, par exemple :
+      SIMPSONS_IPS=120          120 images/s dans les niveaux (ecran 120 Hz ou plus)
+      SIMPSONS_RESOLUTION=2     resolution interne 1440p (1 = 720p, 3 = 4K)
 
 MANETTE
 - Une manette Xbox (filaire ou Bluetooth) fonctionne directement.

@@ -163,8 +163,10 @@ game into `~/Jeux/Les Simpson - Le Jeu` with a shortcut in the applications menu
 
 ## Settings (environment variables)
 
-On the Mac, the application also reads them from `~/Library/Application Support/Les Simpson - Le Jeu/reglages.txt`,
-one `SIMPSONS_...=value` per line (`#` disables a line).
+The game also reads them from `reglages.txt`, next to the saves and `jeu.log` (created at the first start with the
+main settings commented out): one `SIMPSONS_...=value` per line, `#` disables a line. Mac:
+`~/Library/Application Support/Les Simpson - Le Jeu`, Windows: `%LOCALAPPDATA%\Les Simpson - Le Jeu`, Linux:
+`~/.local/share/les-simpson-le-jeu`.
 
 | Variable | Effect |
 |---|---|

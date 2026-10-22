@@ -164,8 +164,10 @@ plus récent (glibc 2.35), un processeur x86-64-v3 (Intel Haswell, AMD Ryzen) et
 
 ## Réglages (variables d'environnement)
 
-Sur Mac, l'application les lit aussi dans `~/Library/Application Support/Les Simpson - Le Jeu/reglages.txt`, une
-ligne `SIMPSONS_...=valeur` par réglage (`#` pour désactiver une ligne).
+Le jeu les lit aussi dans `reglages.txt`, à côté des sauvegardes et de `jeu.log` (créé au premier lancement avec les
+principaux réglages en commentaire) : une ligne `SIMPSONS_...=valeur` par réglage, `#` pour désactiver une ligne.
+Mac : `~/Library/Application Support/Les Simpson - Le Jeu`, Windows : `%LOCALAPPDATA%\Les Simpson - Le Jeu`,
+Linux : `~/.local/share/les-simpson-le-jeu`.
 
 | Variable | Effet |
 |---|---|
