@@ -133,8 +133,8 @@ namespace
     VkDescriptorSet g_fxaaSets[FRAMES_IN_FLIGHT]{}; // one per frame slot: rewritten once the slot's fence has passed
     VkSampler g_fxaaSampler = VK_NULL_HANDLE;
     bool g_fxaaEnabled = true;
-    // "Appuyez sur Échap ou sur Select / pour passer la vidéo" during movies, as the title screen shows its "Appuyez sur
-    // START." (texte_video.h, files.cpp);
+    // "Appuyez sur Échap ou sur Select / pour passer la vidéo" during movies, in one of the game's clouds (texte_video.h,
+    // files.cpp);
     // drawn with the FXAA pass's layout and vertex shader
     VkPipeline g_skipTextPipeline = VK_NULL_HANDLE;
     VkSampler g_skipTextSampler = VK_NULL_HANDLE; // trilinear: the 5K message is shown down to a fifth of its size
@@ -149,7 +149,7 @@ namespace
         VkDeviceMemory memory = VK_NULL_HANDLE;
         VkImageView view = VK_NULL_HANDLE;
     };
-    Image g_skipTexts[SKIP_TEXT_COUNT]; // movie message per language (texte_video.h), RG8: letters, outline
+    Image g_skipTexts[SKIP_TEXT_COUNT]; // movie message per language (texte_video.h), RGBA8 with mipmaps
     // EDRAM surfaces: one host image per (colour or depth, EDRAM base), addressed in samples so that
     // surfaces of different pitch or multisampling at the same base share their contents (a 4x MSAA
     // 640-pixel surface covers the same samples as a 1280-pixel one). Always in GENERAL layout.
@@ -1273,10 +1273,10 @@ float4 main(float4 position : SV_Position) : SV_Target
                 0, nullptr, levels > 1 ? 2 : 1, levels > 1 ? barriers : &barriers[1]);
             g_skipTextUploaded[textIndex] = true;
         }
-        // With the title screen's "Appuyez sur START." pulse (the text grows and shrinks around its centre at a constant
-        // speed) at half its speed, centred, 60 % of its size and lower than it (91 % of the picture's height instead of
-        // 87 %)
-        constexpr float SIZE = 0.6f, CENTER_Y = 0.91f, SLOWER = 2.0f;
+        // With the title screen's "Appuyez sur START." pulse (the cloud grows and shrinks around its centre at a constant
+        // speed) at half its speed, where the game shows its cloud horizontally, 70 % of its size (letters as large as
+        // 60 % of the title screen's) and low in the picture (centre at 91 % of its height)
+        constexpr float SIZE = 0.7f, CENTER_Y = 0.91f, SLOWER = 2.0f;
         float phase = float(std::fmod(seconds / (SKIP_TEXT_PERIOD * SLOWER), 1.0));
         float pulse = SKIP_TEXT_SMALLEST + (1.0f - SKIP_TEXT_SMALLEST) * (1.0f - std::fabs(2.0f * phase - 1.0f));
         float scale = picture.extent.height / SKIP_TEXT_CAPTURE_HEIGHT * SIZE * pulse;
@@ -2274,8 +2274,8 @@ void RendererPresent(uint64_t frame)
         blit.dstOffsets[1] = { left + int32_t(outWidth), top + int32_t(outHeight), 1 };
         vkCmdBlitImage(g_commandBuffer, source, VK_IMAGE_LAYOUT_GENERAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
     }
-    // During movies: "Appuyez sur Échap ou sur Select / pour passer la vidéo" where the title screen shows its "Appuyez
-    // sur START.", with its look and pulse (in the movie's language)
+    // During movies: "Appuyez sur Échap ou sur Select / pour passer la vidéo" in one of the game's clouds, low in the
+    // picture, with the title screen's pulse (in the movie's language)
     uint32_t skipTextIndex = 0;
     double movieSeconds = 0;
     float skipTextAlpha = g_skipTextPipeline != VK_NULL_HANDLE ? SkipTextAlpha(&skipTextIndex, &movieSeconds) : 0.0f;

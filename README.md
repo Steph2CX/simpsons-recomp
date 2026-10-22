@@ -54,7 +54,7 @@ forces another resolution; if the game stutters, go one step lower.
 - **Keyboard**: arrow keys or WASD (ZQSD on AZERTY) to move, Enter = START, Space = A, E = B, R = X, F = Y.
 - **Fullscreen**: the game starts fullscreen; Cmd+F (Mac), Alt+Enter or F11 to switch to a window.
 - **Movies**: Escape or the gamepad's BACK button (Select, View, "−") skips the movie playing (during its first 7 seconds, a
-  message says so like the title screen's "Press START": same look and pulse (slower), a little smaller and lower; made by tools/texte_video.sh).
+  message says so in one of the game's translucent clouds, written by the game itself; made by tools/texte_video.sh).
 - **Apple TV**: hold B for 2 seconds to return to the home screen.
 - Levels run at 60 fps (`SIMPSONS_30IPS=1` restores the original 30 fps), with Havok physics stepping every frame
   (1/60 s steps). Menus, the title screen and loading screens stay at 30 fps, as they were made for: their logic
