@@ -393,7 +393,21 @@ namespace
         info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
         info.preTransform = capabilities.currentTransform;
         info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        // SIMPSONS_SANS_VSYNC=1 (tests above the display's refresh rate): without waiting for the display
         info.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+        if (getenv("SIMPSONS_SANS_VSYNC"))
+        {
+            uint32_t modeCount = 0;
+            vkGetPhysicalDeviceSurfacePresentModesKHR(g_physicalDevice, g_surface, &modeCount, nullptr);
+            std::vector<VkPresentModeKHR> modes(modeCount);
+            vkGetPhysicalDeviceSurfacePresentModesKHR(g_physicalDevice, g_surface, &modeCount, modes.data());
+            for (VkPresentModeKHR mode : { VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_IMMEDIATE_KHR })
+                if (std::find(modes.begin(), modes.end(), mode) != modes.end())
+                {
+                    info.presentMode = mode;
+                    break;
+                }
+        }
         info.clipped = VK_TRUE;
         info.oldSwapchain = g_swapchain;
         VkSwapchainKHR swapchain;

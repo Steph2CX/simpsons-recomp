@@ -100,6 +100,7 @@ add_executable(SimpsonsRecomp
     content.cpp
     debug_hooks.cpp
     game_fixes.cpp
+    frame_pacing.cpp
     native_functions.cpp
     import_stubs.cpp
     "${CMAKE_CURRENT_BINARY_DIR}/shader_translator_version.h")

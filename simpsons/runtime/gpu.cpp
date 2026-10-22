@@ -19,8 +19,6 @@
 #include <vector>
 #include <algorithm>
 
-extern std::atomic<int64_t> g_lastPhysicsStepNs; // game_fixes.cpp: last Havok world step (steady clock, ns)
-
 #define KERNEL_FUNC(name) PPC_FUNC(__imp__##name)
 
 constexpr uint32_t GPU_REGISTER_BASE = 0x7FC80000;
@@ -450,34 +448,7 @@ static uint32_t ExecutePacket(uint32_t address)
         RendererPresent(frame);
         TexturesNewFrame();
         GpuProfileReport(g_frameCount);
-        // 60 images/s: the game's frame limiter waits <interval> vblanks (field +144 of the object at
-        // 0x82D576A0, 2 = 30 images/s as on the console); forced to 1 while a level runs. The game moves with the
-        // measured time, so its speed is unchanged. Menus, the title screen, loading screens and the pause menu
-        // run their logic once per frame (held directions repeat every few frames, screens wait a few frames):
-        // they stay at 30, as made for. A level runs while the Havok world was stepped in the last 750 ms
-        // (game_fixes.cpp). SIMPSONS_30IPS=1 keeps 30 images/s everywhere, SIMPSONS_MENUS_60=1 puts menus at 60.
-        static const bool sixty = getenv("SIMPSONS_30IPS") == nullptr;
-        static const bool menusSixty = getenv("SIMPSONS_MENUS_60") != nullptr;
-        if (sixty)
-        {
-            static bool forced = false; // +144 set to 1 here (only that is undone in menus)
-            uint32_t object = LoadBE32(0x82D576A0);
-            int64_t lastStep = g_lastPhysicsStepNs.load(std::memory_order_relaxed);
-            int64_t now = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now().time_since_epoch()).count();
-            bool level = menusSixty || (lastStep != 0 && now - lastStep < 750'000'000);
-            if (object != 0 && level && LoadBE32(object + 144) == 2)
-            {
-                StoreBE32(object + 144, 1);
-                forced = true;
-            }
-            else if (object != 0 && !level && forced)
-            {
-                if (LoadBE32(object + 144) == 1)
-                    StoreBE32(object + 144, 2);
-                forced = false;
-            }
-        }
+        // Frame rate (60 images/s in levels, 30 in menus): frame_pacing.cpp
         g_swapCounter++;
         if (frame <= 5 || frame % 300 == 0)
         {

@@ -85,19 +85,27 @@ PPC_FUNC(sub_828B2B70)
 // 1/59.94 s. At 60 images/s that is one 33.4 ms step every other frame: physics objects moved at 30 Hz. Now
 // T = 1/59.94 s and the step gets the clock's own frame time (whole vblanks x time scale, 0x82CED748) instead of the
 // smoothed copy, which settles a few ulps off it: one 16.7 ms step per vblank, at 60 and at 30 images/s (the
-// console's usual step). While the time scale is 0 the game's own path runs. SIMPSONS_PHYSIQUE_ORIGINALE=1: as
-// shipped. SIMPSONS_TRACE_PHYSIQUE=1: steps per frame every 5 s.
+// console's usual step). While the time scale is 0 the game's own path runs. Frames counted in fractional vblanks
+// (frame_pacing.cpp, rates above 60) can be any length: one no longer than T gets a step of T when the simulation is
+// behind the marker; H is then 0, so a longer one is stepped in steps of 1/59.94 s instead of halves of 8.3-12.5 ms.
+// T then follows the frame time (below): one step per frame, as at 60. SIMPSONS_PHYSIQUE_ORIGINALE=1: as shipped. SIMPSONS_TRACE_PHYSIQUE=1:
+// steps per frame every 5 s.
 PPC_FUNC_IMPL(__imp__sub_827A55C0); // Havok world step (r3 = owner, f1 = frame time)
 PPC_FUNC_IMPL(__imp__sub_82AA2070); // hkWorld::stepDeltaTime (f1 = step)
 
-std::atomic<int64_t> g_lastPhysicsStepNs{ 0 }; // read by gpu.cpp: a level is running
+std::atomic<int64_t> g_lastPhysicsStepNs{ 0 }; // read by frame_pacing.cpp: a level is running
+bool FractionalVblanks();                       // frame_pacing.cpp
 
 namespace
 {
     constexpr uint32_t STEP_THRESHOLD = 0x82159238;          // T, read only by sub_827A55C0
     constexpr uint32_t STEP_THRESHOLD_SHIPPED = 0x3D08AB86;  // 1/29.97 s
     constexpr uint32_t STEP_VBLANK = 0x3C88AB86;             // 1/59.94 s
+    constexpr uint32_t STEP_VBLANK_CONSTANT = 0x8215923C;    // 1/59.94 s, the step of long frames
     constexpr uint32_t CLOCK_FRAME_DT = 0x82CED748;
+    constexpr uint32_t HALF_STEP_LIMIT = 0x82DFFA58;         // H, a static of sub_827A55C0
+    constexpr uint32_t HALF_STEP_LIMIT_GUARD = 0x82DFFA5C;   // bit 0: H initialized
+    constexpr uint32_t HALF_STEP_LIMIT_SHIPPED = 0x3D88AB86; // 4/59.94 s
 
     bool g_tracePhysics = false;
     bool g_inStep = false; // steps counted only from sub_827A55C0
@@ -132,18 +140,38 @@ PPC_FUNC(sub_827A55C0)
     (void)trace;
     if (steady)
     {
-        static bool patched = false;
-        if (!patched)
+        static bool checked = false, imageOk = false; // T as shipped: this game image is the expected one
+        if (!checked)
         {
-            patched = true;
-            if (LoadBE32(STEP_THRESHOLD) == STEP_THRESHOLD_SHIPPED)
+            checked = true;
+            imageOk = LoadBE32(STEP_THRESHOLD) == STEP_THRESHOLD_SHIPPED;
+            if (imageOk)
                 StoreBE32(STEP_THRESHOLD, STEP_VBLANK);
             else
                 fprintf(stderr, "[physique] seuil inattendu %08X : physique d'origine\n", LoadBE32(STEP_THRESHOLD));
         }
+        // H: 0 while frames are fractional, as shipped otherwise (once the step initialized it)
+        bool fractional = FractionalVblanks();
+        uint32_t guard = LoadBE32(HALF_STEP_LIMIT_GUARD);
+        if (fractional || (guard & 1))
+        {
+            StoreBE32(HALF_STEP_LIMIT_GUARD, guard | 1);
+            StoreBE32(HALF_STEP_LIMIT, fractional ? 0 : HALF_STEP_LIMIT_SHIPPED);
+        }
         float frameDt = LoadBEFloat(CLOCK_FRAME_DT);
-        if (LoadBE32(STEP_THRESHOLD) == STEP_VBLANK && frameDt > 0.0f && std::isfinite(frameDt))
+        if (imageOk && frameDt > 0.0f && std::isfinite(frameDt))
+        {
             ctx.f1.f64 = frameDt;
+            // Above 60 images/s, one step of the frame's length every frame (T = the frame time): the trampolines
+            // (Land of Chocolate) let the player through when the world is only stepped every other frame, as they
+            // did at 60 images/s with the shipped 33 ms steps. Frames longer than 1/59.94 s keep steps of 1/59.94 s.
+            // SIMPSONS_PHYSIQUE_60=1: 60 steps a second at any rate.
+            static const bool sixtySteps = getenv("SIMPSONS_PHYSIQUE_60") != nullptr;
+            uint32_t threshold = STEP_VBLANK;
+            if (fractional && !sixtySteps && frameDt < LoadBEFloat(STEP_VBLANK_CONSTANT))
+                memcpy(&threshold, &frameDt, 4);
+            StoreBE32(STEP_THRESHOLD, threshold);
+        }
     }
     if (!g_tracePhysics)
     {
