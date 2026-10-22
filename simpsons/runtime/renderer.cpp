@@ -133,7 +133,8 @@ namespace
     VkDescriptorSet g_fxaaSets[FRAMES_IN_FLIGHT]{}; // one per frame slot: rewritten once the slot's fence has passed
     VkSampler g_fxaaSampler = VK_NULL_HANDLE;
     bool g_fxaaEnabled = true;
-    // "Appuyez sur Échap ou sur Select pour passer la vidéo" in the top left corner of the picture during movies (texte_video.h, files.cpp);
+    // "Appuyez sur Échap ou sur Select / pour passer la vidéo" during movies, as the title screen shows its "Appuyez sur
+    // START." (texte_video.h, files.cpp);
     // drawn with the FXAA pass's layout and vertex shader
     VkPipeline g_skipTextPipeline = VK_NULL_HANDLE;
     constexpr uint32_t SKIP_TEXT_COUNT = sizeof(SKIP_TEXTS) / sizeof(SKIP_TEXTS[0]); // languages
@@ -765,7 +766,7 @@ float4 main(float4 position : SV_Position) : SV_Target
 }
 )";
 
-    // Message over the picture: premultiplied white letters with a black outline, faded by alpha
+    // Message over the picture: premultiplied colours, faded by alpha
     const char* SKIP_TEXT_PIXEL_SHADER = R"(
 struct Push
 {
@@ -779,12 +780,11 @@ struct Push
 
 float4 main(float4 position : SV_Position) : SV_Target
 {
-    float2 mask = g_text.SampleLevel(g_sampler, (position.xy - g_push.origin) * g_push.rcpSize, 0.0).rg;
-    return float4(mask.rrr, max(mask.r, mask.g)) * g_push.alpha;
+    return g_text.SampleLevel(g_sampler, (position.xy - g_push.origin) * g_push.rcpSize, 0.0) * g_push.alpha;
 }
 )";
 
-    // Run-length pairs of texte_video.h -> RG8 pixels
+    // Run-length pairs of texte_video.h -> RGBA8 pixels (premultiplied)
     std::vector<uint8_t> DecodeSkipText(const SkipText& text)
     {
         auto sextet = [](char c) -> int {
@@ -808,16 +808,13 @@ float4 main(float4 position : SV_Position) : SV_Target
             }
         }
         std::vector<uint8_t> pixels;
-        pixels.reserve(text.width * text.height * 2);
-        for (size_t i = 0; i + 1 < runs.size(); i += 2)
+        pixels.reserve(text.width * text.height * 4);
+        for (size_t i = 0; i + 4 < runs.size(); i += 5)
         {
             for (uint32_t n = 0; n < runs[i]; n++)
-            {
-                pixels.push_back(uint8_t((runs[i + 1] >> 4) * 17));
-                pixels.push_back(uint8_t((runs[i + 1] & 15) * 17));
-            }
+                pixels.insert(pixels.end(), &runs[i + 1], &runs[i + 5]);
         }
-        pixels.resize(text.width * text.height * 2);
+        pixels.resize(text.width * text.height * 4);
         return pixels;
     }
 
@@ -1168,11 +1165,11 @@ float4 main(float4 position : SV_Position) : SV_Target
 
     // Opacity of the message: shown for the first seconds of each movie, then faded out (files.cpp gives the time since
     // the movie was opened)
-    float SkipTextAlpha(uint32_t* text)
+    float SkipTextAlpha(uint32_t* text, double* seconds)
     {
         std::string language;
-        double seconds = FilesMovieSeconds(&language);
-        if (seconds < 0)
+        *seconds = FilesMovieSeconds(&language);
+        if (*seconds < 0)
             return 0.0f;
         // In the language of the movie, the first message for the others
         *text = 0;
@@ -1181,12 +1178,12 @@ float4 main(float4 position : SV_Position) : SV_Target
             if (language == SKIP_TEXTS[i].language)
                 *text = i;
         }
-        constexpr double SHOWN = 6.0, FADE = 0.5;
-        return float(std::clamp(std::min(seconds / FADE, (SHOWN - seconds) / FADE), 0.0, 1.0));
+        constexpr double SHOWN = 10.0, FADE = 0.5;
+        return float(std::clamp(std::min(*seconds / FADE, (SHOWN - *seconds) / FADE), 0.0, 1.0));
     }
 
-    // Draws the message in the top left corner of the picture, into the swapchain image (COLOR_ATTACHMENT_OPTIMAL)
-    void DrawSkipText(uint32_t imageIndex, VkRect2D picture, float alpha, uint32_t textIndex)
+    // Draws the message over the picture, into the swapchain image (COLOR_ATTACHMENT_OPTIMAL)
+    void DrawSkipText(uint32_t imageIndex, VkRect2D picture, float alpha, uint32_t textIndex, double seconds)
     {
         const SkipText& text = SKIP_TEXTS[textIndex];
         Image& texture = g_skipTexts[textIndex];
@@ -1194,7 +1191,7 @@ float4 main(float4 position : SV_Position) : SV_Target
         {
             if (texture.image == VK_NULL_HANDLE)
             {
-                if (!CreateImage(texture, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8_UNORM, { text.width, text.height, 1 },
+                if (!CreateImage(texture, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8B8A8_UNORM, { text.width, text.height, 1 },
                         1, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT))
                     return;
                 VkDescriptorImageInfo images[2] = { { VK_NULL_HANDLE, texture.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
@@ -1227,17 +1224,14 @@ float4 main(float4 position : SV_Position) : SV_Target
                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
             g_skipTextUploaded[textIndex] = true;
         }
-        // Top left corner, two lines: 7 % of the picture's height, at least 50 pixels (720p window), at most 60 % of
-        // its width, 3 % from its edges
-        float height = std::max(picture.extent.height * 0.07f, 50.0f);
-        float width = height * text.width / text.height;
-        if (width > picture.extent.width * 0.6f)
-        {
-            width = picture.extent.width * 0.6f;
-            height = width * text.height / text.width;
-        }
-        float x = picture.offset.x + picture.extent.height * 0.03f;
-        float y = picture.offset.y + picture.extent.height * 0.03f;
+        // Where and how large the title screen shows its "Appuyez sur START.", with its pulse: the text grows and
+        // shrinks around its centre at a constant speed
+        float phase = float(std::fmod(seconds / SKIP_TEXT_PERIOD, 1.0));
+        float pulse = SKIP_TEXT_SMALLEST + (1.0f - SKIP_TEXT_SMALLEST) * (1.0f - std::fabs(2.0f * phase - 1.0f));
+        float scale = picture.extent.height / SKIP_TEXT_CAPTURE_HEIGHT * pulse;
+        float width = text.width * scale, height = text.height * scale;
+        float x = picture.offset.x + picture.extent.width * text.centerX - width * 0.5f;
+        float y = picture.offset.y + picture.extent.height * text.centerY - height * 0.5f;
         VkRect2D area{ { int32_t(x), int32_t(y) }, { uint32_t(width) + 1, uint32_t(height) + 1 } };
 
         VkRenderingAttachmentInfo color{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
@@ -1256,7 +1250,7 @@ float4 main(float4 position : SV_Position) : SV_Target
         vkCmdSetViewport(g_commandBuffer, 0, 1, &viewport);
         vkCmdSetScissor(g_commandBuffer, 0, 1, &area);
         vkCmdBindDescriptorSets(g_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, g_fxaaLayout, 0, 1, &g_skipTextSets[textIndex], 0, nullptr);
-        float push[5] = { x, y, 1.0f / width, 1.0f / height, alpha * 0.85f };
+        float push[5] = { x, y, 1.0f / width, 1.0f / height, alpha };
         vkCmdPushConstants(g_commandBuffer, g_fxaaLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), push);
         vkCmdDraw(g_commandBuffer, 3, 1, 0, 0);
         vkCmdEndRendering(g_commandBuffer);
@@ -2229,9 +2223,11 @@ void RendererPresent(uint64_t frame)
         blit.dstOffsets[1] = { left + int32_t(outWidth), top + int32_t(outHeight), 1 };
         vkCmdBlitImage(g_commandBuffer, source, VK_IMAGE_LAYOUT_GENERAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
     }
-    // During movies: "Appuyez sur Échap ou sur Select pour passer la vidéo" in the top left corner (in the movie's language)
+    // During movies: "Appuyez sur Échap ou sur Select / pour passer la vidéo" where the title screen shows its "Appuyez
+    // sur START.", with its look and pulse (in the movie's language)
     uint32_t skipTextIndex = 0;
-    float skipTextAlpha = g_skipTextPipeline != VK_NULL_HANDLE ? SkipTextAlpha(&skipTextIndex) : 0.0f;
+    double movieSeconds = 0;
+    float skipTextAlpha = g_skipTextPipeline != VK_NULL_HANDLE ? SkipTextAlpha(&skipTextIndex, &movieSeconds) : 0.0f;
     bool skipText = skipTextAlpha > 0.0f;
     if (skipText)
     {
@@ -2239,7 +2235,7 @@ void RendererPresent(uint64_t frame)
             ImageBarrier(image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                 VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
-        DrawSkipText(imageIndex, { { left, top }, { outWidth, outHeight } }, skipTextAlpha, skipTextIndex);
+        DrawSkipText(imageIndex, { { left, top }, { outWidth, outHeight } }, skipTextAlpha, skipTextIndex, movieSeconds);
     }
 
     // SIMPSONS_CAPTURE=<frame>,...: copy the presented image to the end of the upload ring
