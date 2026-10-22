@@ -42,7 +42,7 @@
 
 int PlatformGpuCoreCount(); // mac_window.mm
 void FilesSkipMovies();      // files.cpp
-double FilesMovieSeconds();
+double FilesMovieSeconds(std::string* language);
 bool RuntimeLowMemory(); // main.cpp
 
 #define VK_CHECK(call)                                                                  \
@@ -128,8 +128,9 @@ namespace
     // "Appuyez sur Échap ou sur Select pour passer la vidéo" in the top left corner of the picture during movies (texte_video.h, files.cpp);
     // drawn with the FXAA pass's layout and vertex shader
     VkPipeline g_skipTextPipeline = VK_NULL_HANDLE;
-    VkDescriptorSet g_skipTextSet = VK_NULL_HANDLE;
-    bool g_skipTextUploaded = false;
+    constexpr uint32_t SKIP_TEXT_COUNT = sizeof(SKIP_TEXTS) / sizeof(SKIP_TEXTS[0]); // languages
+    VkDescriptorSet g_skipTextSets[SKIP_TEXT_COUNT]{};
+    bool g_skipTextUploaded[SKIP_TEXT_COUNT]{};
     VkFence g_frameFence = VK_NULL_HANDLE;
 
     struct Image
@@ -138,7 +139,7 @@ namespace
         VkDeviceMemory memory = VK_NULL_HANDLE;
         VkImageView view = VK_NULL_HANDLE;
     };
-    Image g_skipText; // movie message (texte_video.h), RG8: letters, outline
+    Image g_skipTexts[SKIP_TEXT_COUNT]; // movie message per language (texte_video.h), RG8: letters, outline
     // EDRAM surfaces: one host image per (colour or depth, EDRAM base), addressed in samples so that
     // surfaces of different pitch or multisampling at the same base share their contents (a 4x MSAA
     // 640-pixel surface covers the same samples as a 1280-pixel one). Always in GENERAL layout.
@@ -776,7 +777,7 @@ float4 main(float4 position : SV_Position) : SV_Target
 )";
 
     // Run-length pairs of texte_video.h -> RG8 pixels
-    std::vector<uint8_t> DecodeSkipText()
+    std::vector<uint8_t> DecodeSkipText(const SkipText& text)
     {
         auto sextet = [](char c) -> int {
             return c >= 'A' && c <= 'Z' ? c - 'A' : c >= 'a' && c <= 'z' ? c - 'a' + 26 : c >= '0' && c <= '9' ? c - '0' + 52
@@ -785,7 +786,7 @@ float4 main(float4 position : SV_Position) : SV_Target
         std::vector<uint8_t> runs;
         uint32_t bits = 0;
         int count = 0;
-        for (const char* p = SKIP_TEXT_RUNS; *p; p++)
+        for (const char* p = text.runs; *p; p++)
         {
             int value = sextet(*p);
             if (value < 0)
@@ -799,7 +800,7 @@ float4 main(float4 position : SV_Position) : SV_Target
             }
         }
         std::vector<uint8_t> pixels;
-        pixels.reserve(SKIP_TEXT_WIDTH * SKIP_TEXT_HEIGHT * 2);
+        pixels.reserve(text.width * text.height * 2);
         for (size_t i = 0; i + 1 < runs.size(); i += 2)
         {
             for (uint32_t n = 0; n < runs[i]; n++)
@@ -808,7 +809,7 @@ float4 main(float4 position : SV_Position) : SV_Target
                 pixels.push_back(uint8_t((runs[i + 1] & 15) * 17));
             }
         }
-        pixels.resize(SKIP_TEXT_WIDTH * SKIP_TEXT_HEIGHT * 2);
+        pixels.resize(text.width * text.height * 2);
         return pixels;
     }
 
@@ -833,10 +834,10 @@ float4 main(float4 position : SV_Position) : SV_Target
         setLayoutInfo.pBindings = bindings;
         VK_CHECK(vkCreateDescriptorSetLayout(g_device, &setLayoutInfo, nullptr, &g_fxaaSetLayout));
 
-        VkDescriptorPoolSize poolSizes[2] = { { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, FRAMES_IN_FLIGHT + 1 },
-            { VK_DESCRIPTOR_TYPE_SAMPLER, FRAMES_IN_FLIGHT + 1 } }; // + the message's
+        VkDescriptorPoolSize poolSizes[2] = { { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, FRAMES_IN_FLIGHT + SKIP_TEXT_COUNT },
+            { VK_DESCRIPTOR_TYPE_SAMPLER, FRAMES_IN_FLIGHT + SKIP_TEXT_COUNT } }; // + the messages'
         VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
-        poolInfo.maxSets = FRAMES_IN_FLIGHT + 1;
+        poolInfo.maxSets = FRAMES_IN_FLIGHT + SKIP_TEXT_COUNT;
         poolInfo.poolSizeCount = 2;
         poolInfo.pPoolSizes = poolSizes;
         VK_CHECK(vkCreateDescriptorPool(g_device, &poolInfo, nullptr, &g_fxaaPool));
@@ -925,28 +926,14 @@ float4 main(float4 position : SV_Position) : SV_Target
             vkDestroyShaderModule(g_device, module, nullptr);
         VK_CHECK(created);
 
-        // Message texture (filled at its first display, DrawSkipText) and its descriptor set, written once
-        if (!CreateImage(g_skipText, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8_UNORM, { SKIP_TEXT_WIDTH, SKIP_TEXT_HEIGHT, 1 },
-                1, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT))
-            return false;
+        // Descriptor sets of the messages (their textures are created at their first display, DrawSkipText)
+        VkDescriptorSetLayout textLayouts[SKIP_TEXT_COUNT];
+        std::fill(textLayouts, textLayouts + SKIP_TEXT_COUNT, g_fxaaSetLayout);
         VkDescriptorSetAllocateInfo textSetInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
         textSetInfo.descriptorPool = g_fxaaPool;
-        textSetInfo.descriptorSetCount = 1;
-        textSetInfo.pSetLayouts = &g_fxaaSetLayout;
-        VK_CHECK(vkAllocateDescriptorSets(g_device, &textSetInfo, &g_skipTextSet));
-        VkDescriptorImageInfo textImages[2] = { { VK_NULL_HANDLE, g_skipText.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
-            { g_fxaaSampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED } };
-        VkWriteDescriptorSet textWrites[2];
-        for (uint32_t i = 0; i < 2; i++)
-        {
-            textWrites[i] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-            textWrites[i].dstSet = g_skipTextSet;
-            textWrites[i].dstBinding = i;
-            textWrites[i].descriptorCount = 1;
-            textWrites[i].descriptorType = i == 0 ? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE : VK_DESCRIPTOR_TYPE_SAMPLER;
-            textWrites[i].pImageInfo = &textImages[i];
-        }
-        vkUpdateDescriptorSets(g_device, 2, textWrites, 0, nullptr);
+        textSetInfo.descriptorSetCount = SKIP_TEXT_COUNT;
+        textSetInfo.pSetLayouts = textLayouts;
+        VK_CHECK(vkAllocateDescriptorSets(g_device, &textSetInfo, g_skipTextSets));
         return true;
     }
 
@@ -1173,43 +1160,72 @@ float4 main(float4 position : SV_Position) : SV_Target
 
     // Opacity of the message: shown for the first seconds of each movie, then faded out (files.cpp gives the time since
     // the movie was opened)
-    float SkipTextAlpha()
+    float SkipTextAlpha(uint32_t* text)
     {
-        double seconds = FilesMovieSeconds();
+        std::string language;
+        double seconds = FilesMovieSeconds(&language);
         if (seconds < 0)
             return 0.0f;
+        // In the language of the movie, the first message for the others
+        *text = 0;
+        for (uint32_t i = 0; i < SKIP_TEXT_COUNT; i++)
+        {
+            if (language == SKIP_TEXTS[i].language)
+                *text = i;
+        }
         constexpr double SHOWN = 6.0, FADE = 0.5;
         return float(std::clamp(std::min(seconds / FADE, (SHOWN - seconds) / FADE), 0.0, 1.0));
     }
 
     // Draws the message in the top left corner of the picture, into the swapchain image (COLOR_ATTACHMENT_OPTIMAL)
-    void DrawSkipText(uint32_t imageIndex, VkRect2D picture, float alpha)
+    void DrawSkipText(uint32_t imageIndex, VkRect2D picture, float alpha, uint32_t textIndex)
     {
-        if (!g_skipTextUploaded)
+        const SkipText& text = SKIP_TEXTS[textIndex];
+        Image& texture = g_skipTexts[textIndex];
+        if (!g_skipTextUploaded[textIndex])
         {
-            std::vector<uint8_t> pixels = DecodeSkipText();
+            if (texture.image == VK_NULL_HANDLE)
+            {
+                if (!CreateImage(texture, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8_UNORM, { text.width, text.height, 1 },
+                        1, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT))
+                    return;
+                VkDescriptorImageInfo images[2] = { { VK_NULL_HANDLE, texture.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+                    { g_fxaaSampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED } };
+                VkWriteDescriptorSet writes[2];
+                for (uint32_t i = 0; i < 2; i++)
+                {
+                    writes[i] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+                    writes[i].dstSet = g_skipTextSets[textIndex];
+                    writes[i].dstBinding = i;
+                    writes[i].descriptorCount = 1;
+                    writes[i].descriptorType = i == 0 ? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE : VK_DESCRIPTOR_TYPE_SAMPLER;
+                    writes[i].pImageInfo = &images[i];
+                }
+                vkUpdateDescriptorSets(g_device, 2, writes, 0, nullptr);
+            }
+            std::vector<uint8_t> pixels = DecodeSkipText(text);
             VkDeviceSize offset = Upload(pixels.data(), pixels.size());
             if (offset == UINT64_MAX)
                 return; // upload ring full this frame: next one
-            ImageBarrier(g_skipText.image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            ImageBarrier(texture.image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
             VkBufferImageCopy copy{};
             copy.bufferOffset = offset;
             copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
-            copy.imageExtent = { SKIP_TEXT_WIDTH, SKIP_TEXT_HEIGHT, 1 };
-            vkCmdCopyBufferToImage(g_commandBuffer, g_uploadBuffer, g_skipText.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
-            ImageBarrier(g_skipText.image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            copy.imageExtent = { text.width, text.height, 1 };
+            vkCmdCopyBufferToImage(g_commandBuffer, g_uploadBuffer, texture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+            ImageBarrier(texture.image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-            g_skipTextUploaded = true;
+            g_skipTextUploaded[textIndex] = true;
         }
         // Top left corner, discreet: 2.2 % of the picture's height (at most half its width), 3 % from its edges
         float height = picture.extent.height * 0.022f;
-        float width = height * SKIP_TEXT_WIDTH / SKIP_TEXT_HEIGHT;
+        float width = height * text.width / text.height;
         if (width > picture.extent.width * 0.5f)
         {
             width = picture.extent.width * 0.5f;
-            height = width * SKIP_TEXT_HEIGHT / SKIP_TEXT_WIDTH;
+            height = width * text.height / text.width;
         }
         float x = picture.offset.x + picture.extent.height * 0.03f;
         float y = picture.offset.y + picture.extent.height * 0.03f;
@@ -1230,7 +1246,7 @@ float4 main(float4 position : SV_Position) : SV_Target
         VkViewport viewport{ x, y, width, height, 0.0f, 1.0f };
         vkCmdSetViewport(g_commandBuffer, 0, 1, &viewport);
         vkCmdSetScissor(g_commandBuffer, 0, 1, &area);
-        vkCmdBindDescriptorSets(g_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, g_fxaaLayout, 0, 1, &g_skipTextSet, 0, nullptr);
+        vkCmdBindDescriptorSets(g_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, g_fxaaLayout, 0, 1, &g_skipTextSets[textIndex], 0, nullptr);
         float push[5] = { x, y, 1.0f / width, 1.0f / height, alpha * 0.85f };
         vkCmdPushConstants(g_commandBuffer, g_fxaaLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), push);
         vkCmdDraw(g_commandBuffer, 3, 1, 0, 0);
@@ -2204,8 +2220,9 @@ void RendererPresent(uint64_t frame)
         blit.dstOffsets[1] = { left + int32_t(outWidth), top + int32_t(outHeight), 1 };
         vkCmdBlitImage(g_commandBuffer, source, VK_IMAGE_LAYOUT_GENERAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
     }
-    // During movies: "Appuyez sur Échap ou sur Select pour passer la vidéo" in the top left corner
-    float skipTextAlpha = g_skipTextPipeline != VK_NULL_HANDLE ? SkipTextAlpha() : 0.0f;
+    // During movies: "Appuyez sur Échap ou sur Select pour passer la vidéo" in the top left corner (in the movie's language)
+    uint32_t skipTextIndex = 0;
+    float skipTextAlpha = g_skipTextPipeline != VK_NULL_HANDLE ? SkipTextAlpha(&skipTextIndex) : 0.0f;
     bool skipText = skipTextAlpha > 0.0f;
     if (skipText)
     {
@@ -2213,7 +2230,7 @@ void RendererPresent(uint64_t frame)
             ImageBarrier(image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                 VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
-        DrawSkipText(imageIndex, { { left, top }, { outWidth, outHeight } }, skipTextAlpha);
+        DrawSkipText(imageIndex, { { left, top }, { outWidth, outHeight } }, skipTextAlpha, skipTextIndex);
     }
 
     // SIMPSONS_CAPTURE=<frame>,...: copy the presented image to the end of the upload ring

@@ -1,11 +1,19 @@
-// Draws the "skip the movie" message shown at the top of the screen during movies (renderer.cpp) and writes it as a
-// C++ header: one byte per pixel, high nibble = white letters, low nibble = their black outline (4 bits each),
-// run-length encoded ([count][value] pairs, count 1-255) then base64. Font: Nunito bold (OFL, tools/polices).
+// Draws the "skip the movie" message shown in the top left corner during movies (renderer.cpp), in each language of
+// the game's movies (the language folder of the movie playing chooses it), and writes them as a C++ header: one byte
+// per pixel, high nibble = white letters, low nibble = their black outline (4 bits each), run-length encoded
+// ([count][value] pairs, count 1-255) then base64. Font: Nunito bold (OFL, tools/polices).
 // Usage: swift tools/texte_video.swift <out.h>
 import AppKit
 import CoreText
 
-let text = "Appuyez sur Échap ou sur Select pour passer la vidéo"
+// Language folder of the movies (movies\<language>\...), message; the first one is used for unknown languages
+let messages: [(String, String)] = [
+    ("en", "Press Esc or Select to skip the video"),
+    ("fr", "Appuyez sur Échap ou sur Select pour passer la vidéo"),
+    ("es", "Pulsa Esc o Select para saltar el vídeo"),
+    ("it", "Premi Esc o Select per saltare il video"),
+    ("de", "Drücke Esc oder Select, um das Video zu überspringen"),
+]
 let fontSize: CGFloat = 64
 let outline: CGFloat = 3 // outline thickness in pixels
 
@@ -16,7 +24,7 @@ let descriptors = CTFontManagerCreateFontDescriptorsFromURL(fontURL as CFURL) as
 let bold = CTFontDescriptorCreateCopyWithAttributes(descriptors[0], [kCTFontVariationAttribute: [0x77676874: 700]] as CFDictionary)
 let font = CTFontCreateWithFontDescriptor(bold, fontSize, nil)
 
-func line(strokeWidth: CGFloat) -> CTLine {
+func line(_ text: String, strokeWidth: CGFloat) -> CTLine {
     var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: CGColor(gray: 1, alpha: 1)]
     if strokeWidth != 0 {
         // Negative stroke width: filled and stroked; in percent of the font size, on both sides of the outline
@@ -26,52 +34,66 @@ func line(strokeWidth: CGFloat) -> CTLine {
     return CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
 }
 
-let fill = line(strokeWidth: 0), stroke = line(strokeWidth: outline)
-let bounds = CTLineGetBoundsWithOptions(stroke, .useGlyphPathBounds).insetBy(dx: -outline - 2, dy: -outline - 2)
-let width = Int(bounds.width.rounded(.up)), height = Int(bounds.height.rounded(.up))
+// One message: "{ language, width, height, runs }" for the header
+func encode(_ language: String, _ text: String) -> String {
+    let fill = line(text, strokeWidth: 0), stroke = line(text, strokeWidth: outline)
+    let bounds = CTLineGetBoundsWithOptions(stroke, .useGlyphPathBounds).insetBy(dx: -outline - 2, dy: -outline - 2)
+    let width = Int(bounds.width.rounded(.up)), height = Int(bounds.height.rounded(.up))
 
-func render(_ line: CTLine) -> [UInt8] {
-    var pixels = [UInt8](repeating: 0, count: width * height)
-    let context = CGContext(data: &pixels, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
-                            space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)!
-    context.translateBy(x: -bounds.minX, y: -bounds.minY)
-    context.textPosition = .zero
-    CTLineDraw(line, context)
-    return pixels // first row = top of the image
-}
-
-let letters = render(fill), border = render(stroke)
-var packed = [UInt8]()
-for i in 0..<(width * height) {
-    packed.append((letters[i] >> 4) << 4 | border[i] >> 4)
-}
-var runs = [UInt8]()
-var i = 0
-while i < packed.count {
-    var count = 1
-    while i + count < packed.count && count < 255 && packed[i + count] == packed[i] {
-        count += 1
+    func render(_ line: CTLine) -> [UInt8] {
+        var pixels = [UInt8](repeating: 0, count: width * height)
+        let context = CGContext(data: &pixels, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
+                                space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)!
+        context.translateBy(x: -bounds.minX, y: -bounds.minY)
+        context.textPosition = .zero
+        CTLineDraw(line, context)
+        return pixels // first row = top of the image
     }
-    runs += [UInt8(count), packed[i]]
-    i += count
+
+    let letters = render(fill), border = render(stroke)
+    var packed = [UInt8]()
+    for i in 0..<(width * height) {
+        packed.append((letters[i] >> 4) << 4 | border[i] >> 4)
+    }
+    var runs = [UInt8]()
+    var i = 0
+    while i < packed.count {
+        var count = 1
+        while i + count < packed.count && count < 255 && packed[i + count] == packed[i] {
+            count += 1
+        }
+        runs += [UInt8(count), packed[i]]
+        i += count
+    }
+    let encoded = Data(runs).base64EncodedString()
+    var lines = [String]()
+    var start = encoded.startIndex
+    while start < encoded.endIndex {
+        let end = encoded.index(start, offsetBy: 112, limitedBy: encoded.endIndex) ?? encoded.endIndex
+        lines.append("        \"\(encoded[start..<end])\"")
+        start = end
+    }
+    print("\(language): \(width)x\(height), \(runs.count / 2) runs, \(encoded.count) base64 characters")
+    return "    // \(text)\n    { \"\(language)\", \(width), \(height),\n\(lines.joined(separator: "\n")) },"
 }
-let encoded = Data(runs).base64EncodedString()
-var lines = [String]()
-var start = encoded.startIndex
-while start < encoded.endIndex {
-    let end = encoded.index(start, offsetBy: 116, limitedBy: encoded.endIndex) ?? encoded.endIndex
-    lines.append("    \"\(encoded[start..<end])\"")
-    start = end
-}
+
+let entries = messages.map { encode($0.0, $0.1) }
 let header = """
-// Generated by tools/texte_video.swift: "\(text)" (Nunito, OFL)
+// Generated by tools/texte_video.swift (Nunito, OFL)
 #pragma once
 
-constexpr unsigned SKIP_TEXT_WIDTH = \(width), SKIP_TEXT_HEIGHT = \(height);
 // Run-length pairs [count][value], base64; value: high nibble = letters, low nibble = outline
-constexpr const char* SKIP_TEXT_RUNS =
-\(lines.joined(separator: "\n"));
+struct SkipText
+{
+    const char* language; // folder of the movies (movies\\<language>\\...)
+    unsigned width, height;
+    const char* runs;
+};
+
+// The first one is used for other languages
+constexpr SkipText SKIP_TEXTS[] = {
+\(entries.joined(separator: "\n"))
+};
 
 """
 try! header.write(toFile: CommandLine.arguments[1], atomically: true, encoding: .utf8)
-print("\(width)x\(height), \(runs.count / 2) runs, \(encoded.count) base64 characters")

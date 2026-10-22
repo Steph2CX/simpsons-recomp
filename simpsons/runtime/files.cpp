@@ -132,6 +132,8 @@ bool CloseFileHandle(uint32_t handle)
     return true;
 }
 
+static std::string ToLower(std::string text);
+
 // Skipping movies (Escape, renderer.cpp): while a .vp6 file is open, the next "has the movie ended?" question of the
 // game's movie player is answered yes (game_fixes.cpp), so the game ends the movie its own way and goes on.
 static std::atomic<bool> g_movieSkipRequested{ false };
@@ -155,15 +157,21 @@ bool FilesTakeMovieSkip()
     return g_movieSkipRequested.exchange(false);
 }
 
-// Seconds since the movie playing now was opened, -1 when none (or it was skipped)
-double FilesMovieSeconds()
+// Seconds since the movie playing now was opened, -1 when none (or it was skipped); its language is the folder of
+// the movie (movies\<language>\...: "fr" on the French disc, "en" on the American one)
+double FilesMovieSeconds(std::string* language)
 {
     std::lock_guard lock(g_fileMutex);
     double seconds = -1;
     for (auto& [handle, file] : g_files)
     {
-        if (file->movie && !file->skipped)
-            seconds = std::max(seconds, std::chrono::duration<double>(std::chrono::steady_clock::now() - file->opened).count());
+        double opened = std::chrono::duration<double>(std::chrono::steady_clock::now() - file->opened).count();
+        if (file->movie && !file->skipped && opened > seconds)
+        {
+            seconds = opened;
+            fs::path folder = fs::path(file->hostPath).parent_path().filename();
+            *language = ToLower(folder.string());
+        }
     }
     return seconds;
 }
