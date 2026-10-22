@@ -1669,7 +1669,7 @@ bool RendererInit()
     SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, "1");
 #ifdef SIMPSONS_TVOS
     // The Siri Remote is not a gamepad for the game (it would take player 1 from the real controller). Back to the
-    // Apple TV home screen: hold B (InputQuitRequested)
+    // Apple TV home screen: hold Back + Start (InputQuitRequested)
     SDL_SetHint(SDL_HINT_TV_REMOTE_AS_JOYSTICK, "0");
 #endif
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD))

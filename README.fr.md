@@ -57,7 +57,7 @@ Les seuils des cartes dédiées n'ont pas encore été vérifiés sur un vrai PC
 - **Vidéos** : Échap ou le bouton BACK de la manette (Select, Affichage, « − ») passe la vidéo en cours (pendant ses 7 premières
   secondes, un message le rappelle dans un des nuages translucides du jeu, écrit par le jeu lui-même ; fait par
   tools/texte_video.sh).
-- **Apple TV** : maintenir B pendant 2 secondes pour revenir à l'écran d'accueil.
+- **Apple TV** : maintenir Select (ou Back, −) + Start (+) ensemble pendant 2 secondes pour revenir à l'écran d'accueil.
 - Les niveaux tournent à 60 images/s (`SIMPSONS_30IPS=1` pour revenir aux 30 images/s d'origine), avec la physique
   Havok calculée à chaque image (pas de 1/60 s). Les menus, l'écran titre et les chargements restent à 30 images/s,
   comme prévu par le jeu : leur logique compte en images. Écrans plus rapides : `SIMPSONS_IPS=120` (ou 90, 144, 165,
