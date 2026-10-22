@@ -53,10 +53,13 @@ forces another resolution; if the game stutters, go one step lower.
 - **Controller**: an Xbox controller (wired or Bluetooth) or any XInput-compatible controller works out of the box.
 - **Keyboard**: arrow keys or WASD (ZQSD on AZERTY) to move, Enter = START, Space = A, E = B, R = X, F = Y.
 - **Fullscreen**: the game starts fullscreen; Cmd+F (Mac), Alt+Enter or F11 to switch to a window.
+- **Movies**: Escape skips the movie playing (a message at the top of the screen says so during its first seconds).
 - **Apple TV**: hold B for 2 seconds to return to the home screen.
 - Levels run at 60 fps (`SIMPSONS_30IPS=1` restores the original 30 fps), with Havok physics stepping every frame
   (1/60 s steps). Menus, the title screen and loading screens stay at 30 fps, as they were made for: their logic
-  counts frames.
+  counts frames. Faster displays: `SIMPSONS_IPS=120` (or 90, 144, 165, 240, 0 = unlimited) in levels; frames are
+  then measured precisely so the game keeps its speed, and physics takes one step per frame (the trampolines need it).
+  Pick your display's refresh rate.
 
 | Platform | Saves and log (`jeu.log`) |
 |---|---|
@@ -159,11 +162,17 @@ game into `~/Jeux/Les Simpson - Le Jeu` with a shortcut in the applications menu
 
 ## Settings (environment variables)
 
+On the Mac, the application also reads them from `~/Library/Application Support/Les Simpson - Le Jeu/reglages.txt`,
+one `SIMPSONS_...=value` per line (`#` disables a line).
+
 | Variable | Effect |
 |---|---|
 | `SIMPSONS_RESOLUTION=1..4` | internal resolution (720p, 1440p, 4K, 5K) |
 | `SIMPSONS_FXAA=0` | no FXAA anti-aliasing at presentation (on by default) |
 | `SIMPSONS_30IPS=1` | 30 fps like the console |
+| `SIMPSONS_IPS=<rate>` | frame rate in levels: 60 by default, 90, 120, 144, 165, 240 or 0 (unlimited) |
+| `SIMPSONS_SANS_VSYNC=1` | presents without waiting for the display (tests above its refresh rate) |
+| `SIMPSONS_PHYSIQUE_60=1` | above 60 fps, physics keeps 60 steps a second (trampolines then let the player through) |
 | `SIMPSONS_MENUS_60=1` | menus and title screen at 60 fps too (they then run twice as fast) |
 | `SIMPSONS_PHYSIQUE_ORIGINALE=1` | Havok physics as shipped (30 steps per second at 60 fps) |
 | `SIMPSONS_TRACE_PHYSIQUE=1` | physics steps per frame every 5 s |

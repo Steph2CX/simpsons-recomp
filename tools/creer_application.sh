@@ -67,6 +67,12 @@ app="${0:A:h:h}"
 support="$HOME/Library/Application Support/Les Simpson - Le Jeu"
 mkdir -p "$support/donnees" "$support/recomp"
 cd "$support"
+# Reglages (variables SIMPSONS_..., voir le README) : une par ligne dans reglages.txt, # pour un commentaire
+if [[ -f "$support/reglages.txt" ]]; then
+    while IFS= read -r ligne; do
+        [[ "$ligne" =~ '^SIMPSONS_[A-Z0-9_]+=[^[:space:]]*$' ]] && export "$ligne"
+    done < "$support/reglages.txt"
+fi
 SIMPSONS_DONNEES="$support/donnees" exec "$app/MacOS/SimpsonsRecomp" "$app/Resources/game/default.xex" > "$support/jeu.log" 2>&1
 LANCEUR
 chmod +x "$app/Contents/MacOS/lancer"

@@ -54,10 +54,13 @@ Les seuils des cartes dédiées n'ont pas encore été vérifiés sur un vrai PC
 - **Manette** : une manette Xbox (filaire ou Bluetooth) ou compatible XInput fonctionne directement.
 - **Clavier** : flèches ou ZQSD pour se déplacer, Entrée = START, Espace = A, E = B, R = X, F = Y.
 - **Plein écran** : le jeu démarre en plein écran ; Cmd+F (Mac), Alt+Entrée ou F11 pour passer en fenêtre.
+- **Vidéos** : Échap passe la vidéo en cours (un message en haut de l'écran le rappelle pendant ses premières secondes).
 - **Apple TV** : maintenir B pendant 2 secondes pour revenir à l'écran d'accueil.
 - Les niveaux tournent à 60 images/s (`SIMPSONS_30IPS=1` pour revenir aux 30 images/s d'origine), avec la physique
   Havok calculée à chaque image (pas de 1/60 s). Les menus, l'écran titre et les chargements restent à 30 images/s,
-  comme prévu par le jeu : leur logique compte en images.
+  comme prévu par le jeu : leur logique compte en images. Écrans plus rapides : `SIMPSONS_IPS=120` (ou 90, 144, 165,
+  240, 0 = sans limite) dans les niveaux ; les images sont alors mesurées précisément pour garder la vitesse du jeu,
+  et la physique fait un pas par image (les trampolines en ont besoin). Choisissez la fréquence de votre écran.
 
 | Plateforme | Sauvegardes et journal (`jeu.log`) |
 |---|---|
@@ -160,11 +163,17 @@ plus récent (glibc 2.35), un processeur x86-64-v3 (Intel Haswell, AMD Ryzen) et
 
 ## Réglages (variables d'environnement)
 
+Sur Mac, l'application les lit aussi dans `~/Library/Application Support/Les Simpson - Le Jeu/reglages.txt`, une
+ligne `SIMPSONS_...=valeur` par réglage (`#` pour désactiver une ligne).
+
 | Variable | Effet |
 |---|---|
 | `SIMPSONS_RESOLUTION=1..4` | résolution interne (720p, 1440p, 4K, 5K) |
 | `SIMPSONS_FXAA=0` | sans anticrénelage FXAA à l'affichage (activé par défaut) |
 | `SIMPSONS_30IPS=1` | 30 images/s comme sur la console |
+| `SIMPSONS_IPS=<cadence>` | images/s dans les niveaux : 60 par défaut, 90, 120, 144, 165, 240 ou 0 (sans limite) |
+| `SIMPSONS_SANS_VSYNC=1` | affichage sans attendre l'écran (tests au-delà de sa fréquence) |
+| `SIMPSONS_PHYSIQUE_60=1` | au-delà de 60 images/s, la physique garde 60 pas par seconde (on passe alors à travers les trampolines) |
 | `SIMPSONS_MENUS_60=1` | menus et écran titre à 60 images/s aussi (ils vont alors deux fois trop vite) |
 | `SIMPSONS_PHYSIQUE_ORIGINALE=1` | physique Havok d'origine (30 pas par seconde à 60 images/s) |
 | `SIMPSONS_TRACE_PHYSIQUE=1` | pas de physique par image, toutes les 5 s |
