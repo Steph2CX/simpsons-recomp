@@ -210,3 +210,16 @@ PPC_FUNC(sub_82AA2070)
     }
     __imp__sub_82AA2070(ctx, base);
 }
+
+// Escape skips the movie playing (files.cpp): the movie update (sub_826B92F0) asks sub_8282D720 every frame whether the
+// global movie player (0x82E06F5C) has reached the end; answered yes once, the game stops the player, then plays the
+// next movie of the list or goes back to the game flow, as at the natural end.
+PPC_FUNC_IMPL(__imp__sub_8282D720); // has the movie ended? (r3 = 1 when it has)
+bool FilesTakeMovieSkip();
+
+PPC_FUNC(sub_8282D720)
+{
+    __imp__sub_8282D720(ctx, base);
+    if (FilesTakeMovieSkip())
+        ctx.r3.u64 = 1;
+}

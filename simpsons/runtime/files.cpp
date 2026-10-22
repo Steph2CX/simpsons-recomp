@@ -5,6 +5,7 @@
 #include "runtime.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cerrno>
 #include <cstring>
@@ -86,6 +87,9 @@ struct FileHandle
     std::vector<fs::directory_entry> entries; // directory listing for NtQueryDirectoryFile
     size_t nextEntry = 0;
     bool listed = false;
+    bool movie = false;   // .vp6 movie
+    bool skipped = false; // movie skipped with Escape (its message is no longer shown)
+    std::chrono::steady_clock::time_point opened;
 };
 
 static std::mutex g_fileMutex;
@@ -126,6 +130,42 @@ bool CloseFileHandle(uint32_t handle)
     delete it->second;
     g_files.erase(it);
     return true;
+}
+
+// Skipping movies (Escape, renderer.cpp): while a .vp6 file is open, the next "has the movie ended?" question of the
+// game's movie player is answered yes (game_fixes.cpp), so the game ends the movie its own way and goes on.
+static std::atomic<bool> g_movieSkipRequested{ false };
+
+void FilesSkipMovies()
+{
+    std::lock_guard lock(g_fileMutex);
+    for (auto& [handle, file] : g_files)
+    {
+        if (file->movie && !file->skipped)
+        {
+            file->skipped = true;
+            g_movieSkipRequested = true;
+            fprintf(stderr, "[video] passee : %s\n", file->guestPath.c_str());
+        }
+    }
+}
+
+bool FilesTakeMovieSkip()
+{
+    return g_movieSkipRequested.exchange(false);
+}
+
+// Seconds since the movie playing now was opened, -1 when none (or it was skipped)
+double FilesMovieSeconds()
+{
+    std::lock_guard lock(g_fileMutex);
+    double seconds = -1;
+    for (auto& [handle, file] : g_files)
+    {
+        if (file->movie && !file->skipped)
+            seconds = std::max(seconds, std::chrono::duration<double>(std::chrono::steady_clock::now() - file->opened).count());
+    }
+    return seconds;
 }
 
 // ---------------------------------------------------------------------------
@@ -421,6 +461,8 @@ static uint32_t OpenFile(uint32_t handlePtr, uint32_t desiredAccess, uint32_t at
             return STATUS_ACCESS_DENIED;
         }
         file->hostPath = hostPath;
+        file->movie = ToLower(hostPath.extension().string()) == ".vp6";
+        file->opened = std::chrono::steady_clock::now();
         if (create)
         {
             ForgetResolvedCases();

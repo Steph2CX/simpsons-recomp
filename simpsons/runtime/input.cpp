@@ -18,10 +18,12 @@
 #include <cstdlib>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #define KERNEL_FUNC(name) PPC_FUNC(__imp__##name)
 
 uint64_t GpuFrameCount();
+void FilesSkipMovies(); // files.cpp
 
 namespace
 {
@@ -227,7 +229,8 @@ void InputPoll()
     // SIMPSONS_TOUCHES="40:START,45:A,i1300:BAS,i6200:AVANCE*300": presses buttons at given times (seconds) for
     // 200 ms, or at a given frame ("i" prefix) for 10 frames (tests). "*N" holds for N seconds / frames.
     // "J2" before a name: virtual player 2 ("i6400:J2START").
-    // Left stick: AVANCE, RECULE, VAGAUCHE, VADROITE; right stick (camera): CAMGAUCHE, CAMDROITE; triggers LT, RT.
+    // Left stick: AVANCE, RECULE, VAGAUCHE, VADROITE; right stick (camera): CAMGAUCHE, CAMDROITE; triggers LT, RT;
+    // ECHAP: the Escape key (skips the movie).
     static const char* script = getenv("SIMPSONS_TOUCHES");
     PadState scripted2;
     bool scriptedPlayer2 = false;
@@ -290,6 +293,15 @@ void InputPoll()
                     s.leftTrigger = 255;
                 else if (name == "RT")
                     s.rightTrigger = 255;
+                else if (name == "ECHAP") // Escape key: skips the movie, once per press like the keyboard
+                {
+                    static std::vector<double> pressed;
+                    if (std::find(pressed.begin(), pressed.end(), at) == pressed.end())
+                    {
+                        pressed.push_back(at);
+                        FilesSkipMovies();
+                    }
+                }
             }
             p += length;
             if (*p == ',')

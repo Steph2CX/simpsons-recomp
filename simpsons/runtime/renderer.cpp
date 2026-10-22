@@ -38,8 +38,11 @@
 
 #include "shader_translator_version.h" // SHADER_TRANSLATOR_VERSION
 #include "xenos/hlsl_compile.h"
+#include "texte_video.h"
 
 int PlatformGpuCoreCount(); // mac_window.mm
+void FilesSkipMovies();      // files.cpp
+double FilesMovieSeconds();
 bool RuntimeLowMemory(); // main.cpp
 
 #define VK_CHECK(call)                                                                  \
@@ -121,6 +124,12 @@ namespace
     VkDescriptorPool g_fxaaPool = VK_NULL_HANDLE;
     VkDescriptorSet g_fxaaSets[FRAMES_IN_FLIGHT]{}; // one per frame slot: rewritten once the slot's fence has passed
     VkSampler g_fxaaSampler = VK_NULL_HANDLE;
+    bool g_fxaaEnabled = true;
+    // "Appuyez sur Échap pour passer la vidéo" at the top of the picture during movies (texte_video.h, files.cpp);
+    // drawn with the FXAA pass's layout and vertex shader
+    VkPipeline g_skipTextPipeline = VK_NULL_HANDLE;
+    VkDescriptorSet g_skipTextSet = VK_NULL_HANDLE;
+    bool g_skipTextUploaded = false;
     VkFence g_frameFence = VK_NULL_HANDLE;
 
     struct Image
@@ -129,6 +138,7 @@ namespace
         VkDeviceMemory memory = VK_NULL_HANDLE;
         VkImageView view = VK_NULL_HANDLE;
     };
+    Image g_skipText; // movie message (texte_video.h), RG8: letters, outline
     // EDRAM surfaces: one host image per (colour or depth, EDRAM base), addressed in samples so that
     // surfaces of different pitch or multisampling at the same base share their contents (a 4x MSAA
     // 640-pixel surface covers the same samples as a 1280-pixel one). Always in GENERAL layout.
@@ -746,11 +756,68 @@ float4 main(float4 position : SV_Position) : SV_Target
 }
 )";
 
+    // Message over the picture: premultiplied white letters with a black outline, faded by alpha
+    const char* SKIP_TEXT_PIXEL_SHADER = R"(
+struct Push
+{
+    float2 origin;  // top left corner of the message in the window (pixels)
+    float2 rcpSize; // 1 / message size in the window
+    float alpha;
+};
+[[vk::push_constant]] Push g_push;
+[[vk::binding(0, 0)]] Texture2D<float4> g_text;
+[[vk::binding(1, 0)]] SamplerState g_sampler;
+
+float4 main(float4 position : SV_Position) : SV_Target
+{
+    float2 mask = g_text.SampleLevel(g_sampler, (position.xy - g_push.origin) * g_push.rcpSize, 0.0).rg;
+    return float4(mask.rrr, max(mask.r, mask.g)) * g_push.alpha;
+}
+)";
+
+    // Run-length pairs of texte_video.h -> RG8 pixels
+    std::vector<uint8_t> DecodeSkipText()
+    {
+        auto sextet = [](char c) -> int {
+            return c >= 'A' && c <= 'Z' ? c - 'A' : c >= 'a' && c <= 'z' ? c - 'a' + 26 : c >= '0' && c <= '9' ? c - '0' + 52
+                : c == '+' ? 62 : c == '/' ? 63 : -1;
+        };
+        std::vector<uint8_t> runs;
+        uint32_t bits = 0;
+        int count = 0;
+        for (const char* p = SKIP_TEXT_RUNS; *p; p++)
+        {
+            int value = sextet(*p);
+            if (value < 0)
+                continue;
+            bits = (bits << 6) | uint32_t(value);
+            count += 6;
+            if (count >= 8)
+            {
+                count -= 8;
+                runs.push_back(uint8_t(bits >> count));
+            }
+        }
+        std::vector<uint8_t> pixels;
+        pixels.reserve(SKIP_TEXT_WIDTH * SKIP_TEXT_HEIGHT * 2);
+        for (size_t i = 0; i + 1 < runs.size(); i += 2)
+        {
+            for (uint32_t n = 0; n < runs[i]; n++)
+            {
+                pixels.push_back(uint8_t((runs[i + 1] >> 4) * 17));
+                pixels.push_back(uint8_t((runs[i + 1] & 15) * 17));
+            }
+        }
+        pixels.resize(SKIP_TEXT_WIDTH * SKIP_TEXT_HEIGHT * 2);
+        return pixels;
+    }
+
     bool CreateFxaa()
     {
         std::vector<uint32_t> vertexCode = CompileHlslToSpirv(FXAA_VERTEX_SHADER, false);
         std::vector<uint32_t> pixelCode = CompileHlslToSpirv(FXAA_PIXEL_SHADER, true);
-        if (vertexCode.empty() || pixelCode.empty())
+        std::vector<uint32_t> textCode = CompileHlslToSpirv(SKIP_TEXT_PIXEL_SHADER, true);
+        if (vertexCode.empty() || pixelCode.empty() || textCode.empty())
             return false;
 
         VkSamplerCreateInfo samplerInfo{ VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
@@ -766,10 +833,10 @@ float4 main(float4 position : SV_Position) : SV_Target
         setLayoutInfo.pBindings = bindings;
         VK_CHECK(vkCreateDescriptorSetLayout(g_device, &setLayoutInfo, nullptr, &g_fxaaSetLayout));
 
-        VkDescriptorPoolSize poolSizes[2] = { { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, FRAMES_IN_FLIGHT },
-            { VK_DESCRIPTOR_TYPE_SAMPLER, FRAMES_IN_FLIGHT } };
+        VkDescriptorPoolSize poolSizes[2] = { { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, FRAMES_IN_FLIGHT + 1 },
+            { VK_DESCRIPTOR_TYPE_SAMPLER, FRAMES_IN_FLIGHT + 1 } }; // + the message's
         VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
-        poolInfo.maxSets = FRAMES_IN_FLIGHT;
+        poolInfo.maxSets = FRAMES_IN_FLIGHT + 1;
         poolInfo.poolSizeCount = 2;
         poolInfo.pPoolSizes = poolSizes;
         VK_CHECK(vkCreateDescriptorPool(g_device, &poolInfo, nullptr, &g_fxaaPool));
@@ -789,9 +856,9 @@ float4 main(float4 position : SV_Position) : SV_Target
         layoutInfo.pPushConstantRanges = &pushRange;
         VK_CHECK(vkCreatePipelineLayout(g_device, &layoutInfo, nullptr, &g_fxaaLayout));
 
-        VkShaderModule modules[2] = {};
-        const std::vector<uint32_t>* codes[2] = { &vertexCode, &pixelCode };
-        for (uint32_t i = 0; i < 2; i++)
+        VkShaderModule modules[3] = {};
+        const std::vector<uint32_t>* codes[3] = { &vertexCode, &pixelCode, &textCode };
+        for (uint32_t i = 0; i < 3; i++)
         {
             VkShaderModuleCreateInfo moduleInfo{ VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
             moduleInfo.codeSize = codes[i]->size() * 4;
@@ -844,9 +911,42 @@ float4 main(float4 position : SV_Position) : SV_Target
         info.pDynamicState = &dynamic;
         info.layout = g_fxaaLayout;
         VkResult created = vkCreateGraphicsPipelines(g_device, VK_NULL_HANDLE, 1, &info, nullptr, &g_fxaaPipeline);
+        if (created == VK_SUCCESS)
+        {
+            // The message: premultiplied alpha over the picture
+            stages[1].module = modules[2];
+            blend.blendEnable = VK_TRUE;
+            blend.srcColorBlendFactor = blend.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+            blend.dstColorBlendFactor = blend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.colorBlendOp = blend.alphaBlendOp = VK_BLEND_OP_ADD;
+            created = vkCreateGraphicsPipelines(g_device, VK_NULL_HANDLE, 1, &info, nullptr, &g_skipTextPipeline);
+        }
         for (VkShaderModule module : modules)
             vkDestroyShaderModule(g_device, module, nullptr);
         VK_CHECK(created);
+
+        // Message texture (filled at its first display, DrawSkipText) and its descriptor set, written once
+        if (!CreateImage(g_skipText, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8_UNORM, { SKIP_TEXT_WIDTH, SKIP_TEXT_HEIGHT, 1 },
+                1, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT))
+            return false;
+        VkDescriptorSetAllocateInfo textSetInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+        textSetInfo.descriptorPool = g_fxaaPool;
+        textSetInfo.descriptorSetCount = 1;
+        textSetInfo.pSetLayouts = &g_fxaaSetLayout;
+        VK_CHECK(vkAllocateDescriptorSets(g_device, &textSetInfo, &g_skipTextSet));
+        VkDescriptorImageInfo textImages[2] = { { VK_NULL_HANDLE, g_skipText.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+            { g_fxaaSampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED } };
+        VkWriteDescriptorSet textWrites[2];
+        for (uint32_t i = 0; i < 2; i++)
+        {
+            textWrites[i] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+            textWrites[i].dstSet = g_skipTextSet;
+            textWrites[i].dstBinding = i;
+            textWrites[i].descriptorCount = 1;
+            textWrites[i].descriptorType = i == 0 ? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE : VK_DESCRIPTOR_TYPE_SAMPLER;
+            textWrites[i].pImageInfo = &textImages[i];
+        }
+        vkUpdateDescriptorSets(g_device, 2, textWrites, 0, nullptr);
         return true;
     }
 
@@ -1069,6 +1169,72 @@ float4 main(float4 position : SV_Position) : SV_Target
         barrier.image = image;
         barrier.subresourceRange = { aspect, 0, VK_REMAINING_MIP_LEVELS, 0, layers };
         vkCmdPipelineBarrier(g_commandBuffer, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+    }
+
+    // Opacity of the message: shown for the first seconds of each movie, then faded out (files.cpp gives the time since
+    // the movie was opened)
+    float SkipTextAlpha()
+    {
+        double seconds = FilesMovieSeconds();
+        if (seconds < 0)
+            return 0.0f;
+        constexpr double SHOWN = 6.0, FADE = 0.5;
+        return float(std::clamp(std::min(seconds / FADE, (SHOWN - seconds) / FADE), 0.0, 1.0));
+    }
+
+    // Draws the message at the top of the picture, into the swapchain image (COLOR_ATTACHMENT_OPTIMAL)
+    void DrawSkipText(uint32_t imageIndex, VkRect2D picture, float alpha)
+    {
+        if (!g_skipTextUploaded)
+        {
+            std::vector<uint8_t> pixels = DecodeSkipText();
+            VkDeviceSize offset = Upload(pixels.data(), pixels.size());
+            if (offset == UINT64_MAX)
+                return; // upload ring full this frame: next one
+            ImageBarrier(g_skipText.image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+            VkBufferImageCopy copy{};
+            copy.bufferOffset = offset;
+            copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+            copy.imageExtent = { SKIP_TEXT_WIDTH, SKIP_TEXT_HEIGHT, 1 };
+            vkCmdCopyBufferToImage(g_commandBuffer, g_uploadBuffer, g_skipText.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+            ImageBarrier(g_skipText.image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+            g_skipTextUploaded = true;
+        }
+        // 3 % of the picture's height, at most 90 % of its width, centred 4 % below its top
+        float height = picture.extent.height * 0.03f;
+        float width = height * SKIP_TEXT_WIDTH / SKIP_TEXT_HEIGHT;
+        if (width > picture.extent.width * 0.9f)
+        {
+            width = picture.extent.width * 0.9f;
+            height = width * SKIP_TEXT_HEIGHT / SKIP_TEXT_WIDTH;
+        }
+        float x = picture.offset.x + (picture.extent.width - width) * 0.5f;
+        float y = picture.offset.y + picture.extent.height * 0.04f;
+        VkRect2D area{ { int32_t(x), int32_t(y) }, { uint32_t(width) + 1, uint32_t(height) + 1 } };
+
+        VkRenderingAttachmentInfo color{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+        color.imageView = g_swapchainViews[imageIndex];
+        color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        color.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+        color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        VkRenderingInfo rendering{ VK_STRUCTURE_TYPE_RENDERING_INFO };
+        rendering.renderArea = area;
+        rendering.layerCount = 1;
+        rendering.colorAttachmentCount = 1;
+        rendering.pColorAttachments = &color;
+        vkCmdBeginRendering(g_commandBuffer, &rendering);
+        vkCmdBindPipeline(g_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, g_skipTextPipeline);
+        VkViewport viewport{ x, y, width, height, 0.0f, 1.0f };
+        vkCmdSetViewport(g_commandBuffer, 0, 1, &viewport);
+        vkCmdSetScissor(g_commandBuffer, 0, 1, &area);
+        vkCmdBindDescriptorSets(g_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, g_fxaaLayout, 0, 1, &g_skipTextSet, 0, nullptr);
+        float push[5] = { x, y, 1.0f / width, 1.0f / height, alpha };
+        vkCmdPushConstants(g_commandBuffer, g_fxaaLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), push);
+        vkCmdDraw(g_commandBuffer, 3, 1, 0, 0);
+        vkCmdEndRendering(g_commandBuffer);
     }
 
     void BeginFrameIfNeeded()
@@ -1545,11 +1711,12 @@ bool RendererInit()
 #endif
     if (!CreateDevice() || !CreateSwapchain() || !CreateResources())
         return false;
-    bool fxaa = !(getenv("SIMPSONS_FXAA") && atoi(getenv("SIMPSONS_FXAA")) == 0);
-    if (fxaa && !CreateFxaa())
+    // Presentation passes (FXAA, movie message); SIMPSONS_FXAA=0 only turns FXAA off
+    g_fxaaEnabled = !(getenv("SIMPSONS_FXAA") && atoi(getenv("SIMPSONS_FXAA")) == 0);
+    if (!CreateFxaa())
     {
-        fprintf(stderr, "[rendu] FXAA indisponible, affichage sans\n");
-        g_fxaaPipeline = VK_NULL_HANDLE;
+        fprintf(stderr, "[rendu] FXAA et message des videos indisponibles\n");
+        g_fxaaPipeline = g_skipTextPipeline = VK_NULL_HANDLE;
     }
 
     g_running = true;
@@ -1647,6 +1814,9 @@ void RendererRunEventLoop()
                 ((event.key.key == SDLK_F && (event.key.mod & SDL_KMOD_GUI)) || event.key.key == SDLK_F11 ||
                     (event.key.key == SDLK_RETURN && (event.key.mod & SDL_KMOD_ALT))))
                 PlatformToggleFullscreen(g_window);
+            // Escape: skips the movie playing (files.cpp)
+            if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key == SDLK_ESCAPE)
+                FilesSkipMovies();
             if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED)
                 g_swapchainOutdated = true;
             InputHandleEvent(event);
@@ -1990,7 +2160,7 @@ void RendererPresent(uint64_t frame)
     VkFormat sourceFormat = TARGET_FORMAT;
     bool resolved = PresentSource(&source, &sourceView, &sourceWidth, &sourceHeight, &sourceFormat);
     // FXAA only from a copy: the EDRAM surfaces cannot be sampled
-    bool fxaa = resolved && g_fxaaPipeline != VK_NULL_HANDLE;
+    bool fxaa = resolved && g_fxaaEnabled && g_fxaaPipeline != VK_NULL_HANDLE;
     if (!resolved)
     {
         if (g_color == nullptr)
@@ -2034,6 +2204,17 @@ void RendererPresent(uint64_t frame)
         blit.dstOffsets[1] = { left + int32_t(outWidth), top + int32_t(outHeight), 1 };
         vkCmdBlitImage(g_commandBuffer, source, VK_IMAGE_LAYOUT_GENERAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
     }
+    // During movies: "Appuyez sur Échap pour passer la vidéo" at the top
+    float skipTextAlpha = g_skipTextPipeline != VK_NULL_HANDLE ? SkipTextAlpha() : 0.0f;
+    bool skipText = skipTextAlpha > 0.0f;
+    if (skipText)
+    {
+        if (!fxaa)
+            ImageBarrier(image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+        DrawSkipText(imageIndex, { { left, top }, { outWidth, outHeight } }, skipTextAlpha);
+    }
 
     // SIMPSONS_CAPTURE=<frame>,...: copy the presented image to the end of the upload ring
     bool capture = false;
@@ -2057,7 +2238,7 @@ void RendererPresent(uint64_t frame)
             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
     else
         SurfaceBarrier(source, VK_IMAGE_ASPECT_COLOR_BIT);
-    if (fxaa)
+    if (fxaa || skipText)
         ImageBarrier(image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0);
     else
