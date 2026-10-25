@@ -4,8 +4,9 @@
 # copy of the texts where the "Nouvel objectif !" hint, shown in a cloud at the start of the level, is replaced by the
 # message; the same moment is captured in 4K with the cloud, then without it (SIMPSONS_SANS_BULLES=1). The installed
 # game and simpsons/modifications are never changed.
-# Needs simpsons/build (development build), simpsons/game (French disc) and simpsons/game-us (American disc); about
-# 3 minutes per capture, the four run two at a time.
+# Needs simpsons/build (development build), simpsons/game (French disc) and simpsons/game-us (American disc, deleted to
+# save space: extract-xiso -x "Simpsons Game, The (USA).iso" -d simpsons/game-us); about 3 minutes per capture, the
+# four run two at a time.
 # Usage: tools/texte_video.sh
 set -e
 tools="${0:A:h}"
