@@ -23,6 +23,8 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../lib" SimpsonsRecompLib)
 set(XENOS_RECOMP_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../XenosRecomp")
 set(XENOS_THIRDPARTY "${XENOS_RECOMP_ROOT}/thirdparty")
 file(READ "${XENOS_RECOMP_ROOT}/XenosRecomp/shader_common.h" SHADER_COMMON_TEXT)
+# Read at configure time: a change to the header must re-run CMake, or the program keeps embedding the old text
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${XENOS_RECOMP_ROOT}/XenosRecomp/shader_common.h")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/shader_common_header.cpp"
     "extern const char g_shaderCommonHeader[] = R\"__XENOS__(${SHADER_COMMON_TEXT})__XENOS__\";\n")
 
