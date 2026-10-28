@@ -269,9 +269,13 @@ namespace
     Image g_dummy2D, g_dummy3D, g_dummyCube;
     VkSampler g_dummySampler = VK_NULL_HANDLE;
 
-    VkDescriptorSetLayout g_setLayouts[4]{};
+    VkDescriptorSetLayout g_setLayouts[6]{}; // heaps (0-3), unused (4), constant blocks (5)
     VkDescriptorPool g_descriptorPool = VK_NULL_HANDLE;
     VkDescriptorSet g_descriptorSets[4]{};
+    // Constant blocks of a draw as dynamic uniform buffers in the upload ring (set 5 of shader_common.h): vertex,
+    // pixel, shared
+    VkDescriptorPool g_constantPool = VK_NULL_HANDLE;
+    VkDescriptorSet g_constantSet = VK_NULL_HANDLE;
     VkPipelineLayout g_pipelineLayout = VK_NULL_HANDLE;
 
     VkBuffer g_uploadBuffer = VK_NULL_HANDLE;
@@ -1057,9 +1061,19 @@ float4 main(float4 position : SV_Position) : SV_Target
         }
         vkUpdateDescriptorSets(g_device, 4, writes, 0, nullptr);
 
+        VkDescriptorSetLayoutCreateInfo emptyLayoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+        VK_CHECK(vkCreateDescriptorSetLayout(g_device, &emptyLayoutInfo, nullptr, &g_setLayouts[4]));
+        VkDescriptorSetLayoutBinding constantBindings[3];
+        for (uint32_t i = 0; i < 3; i++)
+            constantBindings[i] = { i, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1, VK_SHADER_STAGE_ALL_GRAPHICS, nullptr };
+        VkDescriptorSetLayoutCreateInfo constantLayoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+        constantLayoutInfo.bindingCount = 3;
+        constantLayoutInfo.pBindings = constantBindings;
+        VK_CHECK(vkCreateDescriptorSetLayout(g_device, &constantLayoutInfo, nullptr, &g_setLayouts[5]));
+
         VkPushConstantRange pushRange{ VK_SHADER_STAGE_ALL_GRAPHICS, 0, 24 };
         VkPipelineLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
-        layoutInfo.setLayoutCount = 4;
+        layoutInfo.setLayoutCount = 6;
         layoutInfo.pSetLayouts = g_setLayouts;
         layoutInfo.pushConstantRangeCount = 1;
         layoutInfo.pPushConstantRanges = &pushRange;
@@ -1069,7 +1083,8 @@ float4 main(float4 position : SV_Position) : SV_Target
         VkBufferCreateInfo bufferInfo{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
         bufferInfo.size = UPLOAD_SIZE;
         bufferInfo.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-            VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
         VK_CHECK(vkCreateBuffer(g_device, &bufferInfo, nullptr, &g_uploadBuffer));
         VkMemoryRequirements requirements;
         vkGetBufferMemoryRequirements(g_device, g_uploadBuffer, &requirements);
@@ -1086,6 +1101,31 @@ float4 main(float4 position : SV_Position) : SV_Target
         VkBufferDeviceAddressInfo addressInfo{ VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO };
         addressInfo.buffer = g_uploadBuffer;
         g_uploadAddress = vkGetBufferDeviceAddress(g_device, &addressInfo);
+
+        VkDescriptorPoolSize constantPoolSize{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 3 };
+        VkDescriptorPoolCreateInfo constantPoolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+        constantPoolInfo.maxSets = 1;
+        constantPoolInfo.poolSizeCount = 1;
+        constantPoolInfo.pPoolSizes = &constantPoolSize;
+        VK_CHECK(vkCreateDescriptorPool(g_device, &constantPoolInfo, nullptr, &g_constantPool));
+        VkDescriptorSetAllocateInfo constantSetInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+        constantSetInfo.descriptorPool = g_constantPool;
+        constantSetInfo.descriptorSetCount = 1;
+        constantSetInfo.pSetLayouts = &g_setLayouts[5];
+        VK_CHECK(vkAllocateDescriptorSets(g_device, &constantSetInfo, &g_constantSet));
+        VkDescriptorBufferInfo constantBuffers[3] = { { g_uploadBuffer, 0, 256 * 16 }, { g_uploadBuffer, 0, 256 * 16 },
+            { g_uploadBuffer, 0, SHARED_CONSTANTS_SIZE } };
+        VkWriteDescriptorSet constantWrites[3];
+        for (uint32_t i = 0; i < 3; i++)
+        {
+            constantWrites[i] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+            constantWrites[i].dstSet = g_constantSet;
+            constantWrites[i].dstBinding = i;
+            constantWrites[i].descriptorCount = 1;
+            constantWrites[i].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+            constantWrites[i].pBufferInfo = &constantBuffers[i];
+        }
+        vkUpdateDescriptorSets(g_device, 3, constantWrites, 0, nullptr);
 
         // Geometry cache (vertex and index arrays only)
         VkBufferCreateInfo geometryInfo{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
@@ -2142,6 +2182,8 @@ void RendererDraw(const RendererDrawState& state, const float* vertices, uint32_
     uint64_t push[3] = { g_uploadAddress + vsConstants, g_uploadAddress + psConstants, g_uploadAddress + sharedConstants };
     vkCmdBindPipeline(g_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     vkCmdPushConstants(g_commandBuffer, g_pipelineLayout, VK_SHADER_STAGE_ALL_GRAPHICS, 0, sizeof(push), push);
+    uint32_t constantOffsets[3] = { uint32_t(vsConstants), uint32_t(psConstants), uint32_t(sharedConstants) };
+    vkCmdBindDescriptorSets(g_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, g_pipelineLayout, 5, 1, &g_constantSet, 3, constantOffsets);
     if (attributeCount)
         vkCmdBindVertexBuffers(g_commandBuffer, 0, 1, &vertexBuffer, &vertexOffset);
     vkCmdBindIndexBuffer(g_commandBuffer, indexBuffer, indexOffset, VK_INDEX_TYPE_UINT32);

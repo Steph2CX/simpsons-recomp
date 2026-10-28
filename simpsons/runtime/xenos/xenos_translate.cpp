@@ -267,8 +267,8 @@ XenosShader TranslateXenosShader(const uint8_t* microcode, uint32_t sizeBytes, b
         // (scale/offset computed from the PA_CL_VPORT/VTE registers, stored after the shared constants)
         const std::string halfPixel = "oPos.xy += g_HalfPixelOffset * oPos.w;";
         const std::string hostTransform =
-            "oPos.xyz = oPos.xyz * vk::RawBufferLoad<float4>(g_PushConstants.SharedConstants + 288).xyz"
-            " + vk::RawBufferLoad<float4>(g_PushConstants.SharedConstants + 304).xyz * oPos.w;";
+            "oPos.xyz = oPos.xyz * asfloat(g_SharedConstants[288 / 16].xyz)"
+            " + asfloat(g_SharedConstants[304 / 16].xyz) * oPos.w;";
         for (size_t at = result.hlsl.find(halfPixel); at != std::string::npos; at = result.hlsl.find(halfPixel, at))
         {
             result.hlsl.replace(at, halfPixel.size(), hostTransform);

@@ -16,8 +16,35 @@ index d015145..902829d 100644
  
                  bool result = smolv::Encode(spirv->GetBufferPointer(), spirv->GetBufferSize(), shader.spirv, smolv::kEncodeFlagStripDebugInfo);
                  assert(result);
+diff --git a/XenosRecomp/shader_common.h b/XenosRecomp/shader_common.h
+index 1c74034..d7e5361 100644
+--- a/XenosRecomp/shader_common.h
++++ b/XenosRecomp/shader_common.h
+@@ -26,10 +26,18 @@ struct PushConstants
+ 
+ [[vk::push_constant]] ConstantBuffer<PushConstants> g_PushConstants;
+ 
+-#define g_Booleans                 vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + 256)
+-#define g_SwappedTexcoords         vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + 260)
+-#define g_HalfPixelOffset          vk::RawBufferLoad<float2>(g_PushConstants.SharedConstants + 264)
+-#define g_AlphaThreshold           vk::RawBufferLoad<float>(g_PushConstants.SharedConstants + 272)
++// The same blocks as dynamic uniform buffers (set 5): the driver can load them into registers once per draw, where a
++// load through a buffer address is a memory read per pixel and constant (Intel GPUs)
++[[vk::binding(0, 5)]] cbuffer VertexShaderConstantBuffer { float4 g_VertexShaderConstants[256]; };
++[[vk::binding(1, 5)]] cbuffer PixelShaderConstantBuffer { float4 g_PixelShaderConstants[256]; };
++[[vk::binding(2, 5)]] cbuffer SharedConstantBuffer { uint4 g_SharedConstants[33]; };
++
++#define SHARED_U32(OFFSET)         g_SharedConstants[(OFFSET) / 16][((OFFSET) / 4) % 4]
++
++#define g_Booleans                 SHARED_U32(256)
++#define g_SwappedTexcoords         SHARED_U32(260)
++#define g_HalfPixelOffset          asfloat(uint2(SHARED_U32(264), SHARED_U32(268)))
++#define g_AlphaThreshold           asfloat(SHARED_U32(272))
+ 
+ [[vk::constant_id(0)]] const uint g_SpecConstants = 0;
+ 
 diff --git a/XenosRecomp/shader_recompiler.cpp b/XenosRecomp/shader_recompiler.cpp
-index 698a418..1211ac2 100644
+index 698a418..f7eec5f 100644
 --- a/XenosRecomp/shader_recompiler.cpp
 +++ b/XenosRecomp/shader_recompiler.cpp
 @@ -94,6 +94,13 @@ static constexpr DeclUsageLocation USAGE_LOCATIONS[] =
@@ -195,7 +222,7 @@ index 698a418..1211ac2 100644
                      }
 +                    else if (constRelative)
 +                    {
-+                        regFormatted = fmt::format("vk::RawBufferLoad<float4>(g_PushConstants.{}ShaderConstants + uint(clamp(int({}) + {}, 0, 255)) * 16, 0x10)",
++                        regFormatted = fmt::format("g_{}ShaderConstants[uint(clamp(int({}) + {}, 0, 255))]",
 +                            isPixelShader ? "Pixel" : "Vertex", reg, instr.constAddressRegisterRelative ? "a0" : "aL");
 +                    }
                      else
@@ -207,7 +234,7 @@ index 698a418..1211ac2 100644
 +                else if (constRelative)
 +                {
 +                    // c[reg + a0] (or + aL): read from the constant buffer at run time
-+                    regFormatted = fmt::format("vk::RawBufferLoad<float4>(g_PushConstants.{}ShaderConstants + uint(clamp(int({}) + {}, 0, 255)) * 16, 0x10)",
++                    regFormatted = fmt::format("g_{}ShaderConstants[uint(clamp(int({}) + {}, 0, 255))]",
 +                        isPixelShader ? "Pixel" : "Vertex", reg, instr.constAddressRegisterRelative ? "a0" : "aL");
 +                }
                  else
@@ -243,6 +270,37 @@ index 698a418..1211ac2 100644
              break;
  
          case AluScalarOpcode::SetpPop:
+@@ -1154,13 +1222,13 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+             {
+                 uint32_t tailCount = (isPixelShader ? 224 : 256) - constantInfo->registerIndex;
+ 
+-                println("#define {}(INDEX) select((INDEX) < {}, vk::RawBufferLoad<float4>(g_PushConstants.{}ShaderConstants + ({} + min(INDEX, {})) * 16, 0x10), 0.0)",
++                println("#define {}(INDEX) select((INDEX) < {}, g_{}ShaderConstants[{} + min(INDEX, {})], 0.0)",
+                     constantName, tailCount, shaderName, constantInfo->registerIndex.get(), tailCount - 1);
+             }
+             else
+             {
+-                println("#define {} vk::RawBufferLoad<float4>(g_PushConstants.{}ShaderConstants + {}, 0x10)",
+-                    constantName, shaderName, constantInfo->registerIndex * 16);
++                println("#define {} g_{}ShaderConstants[{}]",
++                    constantName, shaderName, constantInfo->registerIndex.get());
+             }
+             
+             for (uint16_t j = 0; j < constantInfo->registerCount; j++)
+@@ -1173,11 +1241,11 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+         {
+             for (size_t j = 0; j < std::size(TEXTURE_DIMENSIONS); j++)
+             {
+-                println("#define {}_Texture{}DescriptorIndex vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + {})",
++                println("#define {}_Texture{}DescriptorIndex SHARED_U32({})",
+                     constantName, TEXTURE_DIMENSIONS[j], j * 64 + constantInfo->registerIndex * 4);
+             }
+ 
+-            println("#define {}_SamplerDescriptorIndex vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + {})",
++            println("#define {}_SamplerDescriptorIndex SHARED_U32({})",
+                 constantName, std::size(TEXTURE_DIMENSIONS) * 64 + constantInfo->registerIndex * 4);
+ 
+             samplers.emplace(constantInfo->registerIndex, constantName);
 @@ -1187,6 +1255,9 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
          }
      }
@@ -431,7 +489,7 @@ index 698a418..1211ac2 100644
              }
  
              auto instructionCode = code + address * 3;
-@@ -1885,4 +2023,30 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+@@ -1885,4 +2023,29 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
  #endif
  
      out += "}";
@@ -441,24 +499,23 @@ index 698a418..1211ac2 100644
 +    const char* shaderName = isPixelShader ? "Pixel" : "Vertex";
 +    for (uint32_t reg : unnamedFloat4Constants)
 +        if (literalFloat4Constants.count(reg) == 0)
-+            definitions += fmt::format("#define c{} vk::RawBufferLoad<float4>(g_PushConstants.{}ShaderConstants + {}, 0x10)\n", reg, shaderName, reg * 16);
++            definitions += fmt::format("#define c{} g_{}ShaderConstants[{}]\n", reg, shaderName, reg);
 +    for (uint32_t index : unnamedSamplers)
 +    {
 +        for (size_t j = 0; j < std::size(TEXTURE_DIMENSIONS); j++)
-+            definitions += fmt::format("#define s{}_Texture{}DescriptorIndex vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + {})\n", index, TEXTURE_DIMENSIONS[j], j * 64 + index * 4);
-+        definitions += fmt::format("#define s{}_SamplerDescriptorIndex vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + {})\n", index, std::size(TEXTURE_DIMENSIONS) * 64 + index * 4);
++            definitions += fmt::format("#define s{}_Texture{}DescriptorIndex SHARED_U32({})\n", index, TEXTURE_DIMENSIONS[j], j * 64 + index * 4);
++        definitions += fmt::format("#define s{}_SamplerDescriptorIndex SHARED_U32({})\n", index, std::size(TEXTURE_DIMENSIONS) * 64 + index * 4);
 +    }
 +    // Loop constants (count in bits 0-7, start 8-15, step 16-23) follow the shared constants at 320
 +    for (uint32_t index : loopConstants)
-+        definitions += fmt::format("#define i{0} (uint4(vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + {1}) & 0xFF, "
-+            "(vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + {1}) >> 8) & 0xFF, "
-+            "(vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + {1}) >> 16) & 0xFF, 0))\n", index, 320 + index * 4);
++        definitions += fmt::format("#define i{0} (uint4(SHARED_U32({1}) & 0xFF, (SHARED_U32({1}) >> 8) & 0xFF, "
++            "(SHARED_U32({1}) >> 16) & 0xFF, 0))\n", index, 320 + index * 4);
 +    for (uint32_t index : unnamedBoolConstants)
 +        definitions += fmt::format("#define b{} (g_Booleans & (1 << {}))\n", index, index + (isPixelShader ? 16 : 0));
 +    if (!isPixelShader)
-+        definitions += "#define g_VertexIndexBase vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + 448)\n";
++        definitions += "#define g_VertexIndexBase SHARED_U32(448)\n";
 +    else
-+        definitions += "#define g_PixelPositionScale vk::RawBufferLoad<float>(g_PushConstants.SharedConstants + 520)\n";
++        definitions += "#define g_PixelPositionScale asfloat(SHARED_U32(520))\n";
 +    if (!definitions.empty())
 +        out.insert(unnamedDefinitionsPosition, "\n" + definitions);
  }
