@@ -5,6 +5,7 @@
 // Toutes les attentes passent par un seul mutex + variable de condition : simple et correct.
 #include "runtime.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -53,14 +54,19 @@ constexpr uint32_t CS_OWNING_THREAD = 0x18;
 constexpr uint32_t KTHREAD_THREAD_ID = 0x14C;
 
 static std::mutex g_dispatcherMutex;
-static std::condition_variable g_dispatcherCondition;
-// Threads currently blocked on g_dispatcherCondition (g_dispatcherMutex held): releasing an object wakes the others
-// only when someone waits (most releases of the game's locks have no waiter, and waking is a system call)
-static uint32_t g_dispatcherWaiters = 0;
+// A thread blocked in the dispatcher (g_dispatcherMutex held), with the keys it waits on: the objects, the critical
+// section, or its own KTHREAD while suspended. Releasing a key wakes only the threads waiting on it (waking every
+// waiter at each release kept ~10 idle game threads waking ~11000 times/s each: about one core of heat on a laptop
+// whose GPU is held back by temperature). SIMPSONS_REVEIL_GLOBAL=1 wakes every waiter at each release, as before.
+struct DispatcherWaiter;
+static std::vector<DispatcherWaiter*> g_dispatcherWaiters;
 struct DispatcherWaiter
 {
-    DispatcherWaiter() { g_dispatcherWaiters++; }
-    ~DispatcherWaiter() { g_dispatcherWaiters--; }
+    std::condition_variable condition;
+    const uint32_t* keys;
+    uint32_t count;
+    DispatcherWaiter(const uint32_t* keys, uint32_t count) : keys(keys), count(count) { g_dispatcherWaiters.push_back(this); }
+    ~DispatcherWaiter() { std::erase(g_dispatcherWaiters, this); }
 };
 
 struct GuestThread
@@ -238,22 +244,26 @@ static uint32_t WaitForObjects(const uint32_t* objects, uint32_t count, bool wai
                 }
                 fprintf(stderr, " lr=0x%llX\n", t_currentThread ? (unsigned long long)GuestLR(t_currentThread->ctx) : 0ull);
             }
-            DispatcherWaiter waiter;
-            g_dispatcherCondition.wait_for(lock, std::chrono::seconds(1));
+            DispatcherWaiter waiter(objects, count);
+            waiter.condition.wait_for(lock, std::chrono::seconds(1));
         }
         else
         {
-            DispatcherWaiter waiter;
-            if (g_dispatcherCondition.wait_until(lock, deadline) == std::cv_status::timeout)
+            DispatcherWaiter waiter(objects, count);
+            if (waiter.condition.wait_until(lock, deadline) == std::cv_status::timeout)
                 return STATUS_TIMEOUT;
         }
     }
 }
 
-static void NotifyWaiters()
+static void NotifyWaiters(uint32_t key)
 {
-    if (g_dispatcherWaiters != 0)
-        g_dispatcherCondition.notify_all();
+    static const bool everyone = getenv("SIMPSONS_REVEIL_GLOBAL") != nullptr;
+    for (DispatcherWaiter* waiter : g_dispatcherWaiters)
+    {
+        if (everyone || std::find(waiter->keys, waiter->keys + waiter->count, key) != waiter->keys + waiter->count)
+            waiter->condition.notify_one();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -270,8 +280,8 @@ static void RunGuestThread(GuestThread* thread, uint32_t startup, uint32_t start
     SetGameThreadPriority();
     {
         std::unique_lock lock(g_dispatcherMutex);
-        DispatcherWaiter waiter;
-        g_dispatcherCondition.wait(lock, [&] { return thread->suspendCount <= 0; });
+        DispatcherWaiter waiter(&thread->kthread, 1);
+        waiter.condition.wait(lock, [&] { return thread->suspendCount <= 0; });
     }
 
     auto& ctx = thread->ctx;
@@ -302,7 +312,7 @@ static void RunGuestThread(GuestThread* thread, uint32_t startup, uint32_t start
     fprintf(stderr, "[runtime] thread %u termine (code 0x%X)\n", thread->threadId, exitCode);
     std::lock_guard lock(g_dispatcherMutex);
     SetSignalState(thread->kthread, 1);
-    NotifyWaiters();
+    NotifyWaiters(thread->kthread);
 }
 
 static GuestThread* RegisterThread(uint32_t stackSize)
@@ -389,7 +399,7 @@ static uint32_t ResumeThread(GuestThread* thread)
     uint32_t previous = uint32_t(std::max(thread->suspendCount, 0));
     if (thread->suspendCount > 0)
         thread->suspendCount--;
-    NotifyWaiters();
+    NotifyWaiters(thread->kthread);
     return previous;
 }
 
@@ -546,7 +556,7 @@ static int32_t SetEvent(uint32_t object)
     std::lock_guard lock(g_dispatcherMutex);
     int32_t previous = SignalState(object);
     SetSignalState(object, 1);
-    NotifyWaiters();
+    NotifyWaiters(object);
     return previous;
 }
 
@@ -666,7 +676,7 @@ static uint32_t ReleaseSemaphore(uint32_t object, int32_t count, int32_t& previo
     if (int64_t(previous) + count > limit)
         return STATUS_SEMAPHORE_LIMIT_EXCEEDED;
     SetSignalState(object, previous + count);
-    NotifyWaiters();
+    NotifyWaiters(object);
     return STATUS_SUCCESS;
 }
 
@@ -756,7 +766,7 @@ KERNEL_FUNC(NtReleaseMutant)
         StoreBE32(object + MUTANT_OWNER, 0);
     if (ctx.r4.u32 != 0)
         StoreBE32(ctx.r4.u32, uint32_t(previous));
-    NotifyWaiters();
+    NotifyWaiters(object);
     ctx.r3.u64 = STATUS_SUCCESS;
 }
 
@@ -886,8 +896,8 @@ KERNEL_FUNC(RtlInitializeCriticalSectionAndSpinCount)
 static void EnterCriticalSection(uint32_t cs, uint32_t thread)
 {
     std::unique_lock lock(g_dispatcherMutex);
-    DispatcherWaiter waiter;
-    g_dispatcherCondition.wait(lock, [&]
+    DispatcherWaiter waiter(&cs, 1);
+    waiter.condition.wait(lock, [&]
         {
             uint32_t owner = LoadBE32(cs + CS_OWNING_THREAD);
             return owner == 0 || owner == thread;
@@ -934,7 +944,7 @@ KERNEL_FUNC(RtlLeaveCriticalSection)
     if (recursion == 1)
     {
         StoreBE32(cs + CS_OWNING_THREAD, 0);
-        NotifyWaiters();
+        NotifyWaiters(cs);
     }
 }
 
@@ -1190,7 +1200,6 @@ static void TimerThread()
     {
         auto now = std::chrono::steady_clock::now();
         auto next = now + std::chrono::hours(1);
-        bool signalled = false;
 
         for (auto& [object, timer] : g_timers)
         {
@@ -1199,7 +1208,7 @@ static void TimerThread()
             if (timer.due <= now)
             {
                 SetSignalState(object, 1);
-                signalled = true;
+                NotifyWaiters(object);
                 if (timer.period.count() > 0)
                     timer.due += timer.period;
                 else
@@ -1209,8 +1218,6 @@ static void TimerThread()
                 next = std::min(next, timer.due);
         }
 
-        if (signalled)
-            NotifyWaiters();
         g_timerCondition.wait_until(lock, next);
     }
 }
